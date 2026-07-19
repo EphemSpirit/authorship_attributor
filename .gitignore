@@ -1,0 +1,8 @@
+__pycahce__/
+*.py[cod]
+.env
+venv
+.idea
+instance/*
+*.db
+*.db-journal
