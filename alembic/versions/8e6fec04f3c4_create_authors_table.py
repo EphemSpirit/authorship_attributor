@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.create_table('authors',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=50), nullable=False),
-    sa.Column('author_metadata', sa.JSON(), nullable=False),
+    sa.Column('author_metadata', sa.JSON(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_authors_id'), 'authors', ['id'], unique=False)
