@@ -14,7 +14,7 @@ def test_get_authors_empty():
     assert response.json() == []
 
 
-def test_get_authors(test_author):
+def test_get_authors(test_author: Author):
     response = client.get("/authors")
 
     assert response.status_code == status.HTTP_200_OK
@@ -40,7 +40,7 @@ def test_create_author():
     assert body["author_metadata"] == payload["author_metadata"]
 
 
-def test_get_author(test_author):
+def test_get_author(test_author: Author):
     response = client.get(f"/authors/{test_author.id}")
 
     assert response.status_code == status.HTTP_200_OK
@@ -56,7 +56,7 @@ def test_get_author_not_found():
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_update_author(test_author):
+def test_update_author(test_author: Author):
     payload = {
         "name": "Updated Name",
         "author_metadata": {"bio": "Updated bio", "age": 51}
@@ -85,7 +85,7 @@ def test_update_author_not_found():
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_delete_author(test_author):
+def test_delete_author(test_author: Author):
     response = client.delete(f"/authors/{test_author.id}")
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
