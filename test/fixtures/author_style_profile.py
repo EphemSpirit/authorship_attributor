@@ -14,7 +14,15 @@ def test_author_style_profile(test_author):
         feature_names=["the", "of", "and"],
         num_documents_used=12,
         model_version="v1",
-        computed_at=datetime(year=2026, month=7, day=21, hour=17, minute=25, second=46, microsecond=221560)
+        computed_at=datetime(
+            year=2026,
+            month=7,
+            day=21,
+            hour=17,
+            minute=25,
+            second=46,
+            microsecond=221560
+        )
     )
 
 

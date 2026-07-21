@@ -35,7 +35,11 @@ def get_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depends
 
 
 @router.put("/{author_id}", response_model=AuthorRequest, status_code=status.HTTP_200_OK)
-def update_author(author_id: Annotated[int, Path()], author_request: AuthorRequest, db: Annotated[Session, Depends(get_db)]):
+def update_author(
+        author_request: AuthorRequest,
+        db: Annotated[Session, Depends(get_db)],
+        author_id: int = Path(gt=0)
+):
     author = db.get(Author, author_id)
     if author is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found")
@@ -55,7 +59,11 @@ def delete_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depe
     db.commit()
 
 
-@router.get("/{author_id}/style-profile", response_model=AuthorStyleProfileResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{author_id}/style-profile",
+    response_model=AuthorStyleProfileResponse,
+    status_code=status.HTTP_200_OK
+)
 async def get_author_profile(db: Annotated[Session, Depends(get_db)], author_id: int = Path(gt=0)):
     author_profile = db.query(AuthorStyleProfile).filter(AuthorStyleProfile.author_id == author_id).first()
     if author_profile is None:
