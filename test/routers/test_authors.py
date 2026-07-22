@@ -101,7 +101,7 @@ def test_delete_author_not_found():
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_get_author_profile(test_author_style_profile):
+def test_get_author_profile(test_author_style_profile: AuthorStyleProfile):
     response = client.get(f"/authors/{test_author_style_profile.author_id}/style-profile")
 
     assert response.status_code == status.HTTP_200_OK
@@ -109,9 +109,13 @@ def test_get_author_profile(test_author_style_profile):
     body = response.json()
     assert body["id"] == test_author_style_profile.id
     assert body["author_id"] == test_author_style_profile.author_id
-    assert body["feature_type"] == test_author_style_profile.feature_type
-    assert body["profile_vector"] == test_author_style_profile.profile_vector
-    assert body["feature_names"] == test_author_style_profile.feature_names
     assert body["num_documents_used"] == test_author_style_profile.num_documents_used
     assert body["model_version"] == test_author_style_profile.model_version
     assert body["computed_at"] == test_author_style_profile.computed_at.isoformat()
+
+    expected_feature = test_author_style_profile.features[0]
+    assert len(body["features"]) == 1
+    assert body["features"][0]["id"] == expected_feature.id
+    assert body["features"][0]["feature_type"] == expected_feature.feature_type
+    assert body["features"][0]["profile_vector"] == expected_feature.profile_vector
+    assert body["features"][0]["feature_names"] == expected_feature.feature_names

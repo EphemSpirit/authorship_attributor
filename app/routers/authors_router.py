@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, Path, APIRouter, status
 from app.extensions import get_db
 from typing import Annotated
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models import *
 from app.schemas.author_request import AuthorRequest
 from app.schemas.author_style_profile_response import AuthorStyleProfileResponse
@@ -65,7 +65,13 @@ def delete_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depe
     status_code=status.HTTP_200_OK
 )
 async def get_author_profile(db: Annotated[Session, Depends(get_db)], author_id: int = Path(gt=0)):
-    author_profile = db.query(AuthorStyleProfile).filter(AuthorStyleProfile.author_id == author_id).first()
+    author_profile = (
+        db.query(AuthorStyleProfile)
+        .options(joinedload(AuthorStyleProfile.features))
+        .filter(AuthorStyleProfile.author_id == author_id)
+        .order_by(AuthorStyleProfile.computed_at.desc())
+        .first()
+    )
     if author_profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile for author not found")
     return author_profile
