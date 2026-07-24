@@ -1,9 +1,10 @@
 from fastapi import Depends, HTTPException, Path, APIRouter, status
 from app.extensions import get_db
 from typing import Annotated
-from sqlalchemy.orm import Session
-from app.models import Author
+from sqlalchemy.orm import Session, joinedload
+from app.models import *
 from app.schemas.author_request import AuthorRequest
+from app.schemas.author_style_profile_response import AuthorStyleProfileResponse
 
 router = APIRouter(
     prefix="/authors",
@@ -34,7 +35,11 @@ def get_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depends
 
 
 @router.put("/{author_id}", response_model=AuthorRequest, status_code=status.HTTP_200_OK)
-def update_author(author_id: Annotated[int, Path()], author_request: AuthorRequest, db: Annotated[Session, Depends(get_db)]):
+def update_author(
+        author_request: AuthorRequest,
+        db: Annotated[Session, Depends(get_db)],
+        author_id: int = Path(gt=0)
+):
     author = db.get(Author, author_id)
     if author is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found")
@@ -52,3 +57,21 @@ def delete_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depe
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Author not found")
     db.delete(author)
     db.commit()
+
+
+@router.get(
+    "/{author_id}/style-profile",
+    response_model=AuthorStyleProfileResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_author_profile(db: Annotated[Session, Depends(get_db)], author_id: int = Path(gt=0)):
+    author_profile = (
+        db.query(AuthorStyleProfile)
+        .options(joinedload(AuthorStyleProfile.features))
+        .filter(AuthorStyleProfile.author_id == author_id)
+        .order_by(AuthorStyleProfile.computed_at.desc())
+        .first()
+    )
+    if author_profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile for author not found")
+    return author_profile
