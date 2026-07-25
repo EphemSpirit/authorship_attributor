@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Path, APIRouter, status
 from app.extensions import get_db
 from typing import Annotated
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
 from app.models import *
 from app.schemas.author_request import AuthorRequest
 from app.schemas.author_style_profile_response import AuthorStyleProfileResponse
