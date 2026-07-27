@@ -1,8 +1,7 @@
 import pytest
 from app.models import AuthorStyleProfile, AuthorStyleFeature
-from test.utils import TestingSessionLocal, engine
+from test.utils import TestingSessionLocal
 from test.fixtures.authors import test_author
-from sqlalchemy import text
 from datetime import datetime
 
 @pytest.fixture
@@ -36,8 +35,3 @@ def test_author_style_profile(test_author):
     db.refresh(style_profile)
 
     yield style_profile
-
-    with engine.connect() as connection:
-        connection.execute(text("DELETE FROM author_style_features;"))
-        connection.execute(text("DELETE FROM author_style_profiles;"))
-        connection.commit()

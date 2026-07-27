@@ -1,8 +1,10 @@
+import io
+
+import docx
 import pytest
 from app.models import Document, Author
-from test.utils import TestingSessionLocal, engine
+from test.utils import TestingSessionLocal
 from .authors import test_author
-from sqlalchemy import text
 import hashlib
 
 @pytest.fixture
@@ -23,6 +25,21 @@ def test_document(test_author: Author):
 
     yield document
 
-    with engine.connect() as connection:
-        connection.execute(text("DELETE FROM documents;"))
-        connection.commit()
+
+def _build_docx_bytes(paragraphs: list[str]) -> bytes:
+    document = docx.Document()
+    for paragraph in paragraphs:
+        document.add_paragraph(paragraph)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def make_docx_upload():
+    """Builds a real, in-memory .docx file usable as a multipart upload."""
+    def _make(paragraphs=None, filename="sample.docx"):
+        paragraphs = paragraphs if paragraphs is not None else ["Hello world, this is a sample document."]
+        content = _build_docx_bytes(paragraphs)
+        return filename, io.BytesIO(content), content
+    return _make

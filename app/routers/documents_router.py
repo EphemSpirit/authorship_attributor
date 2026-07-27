@@ -8,6 +8,8 @@ from app.models.document import Document
 import docx
 from docx.opc.exceptions import PackageNotFoundError
 import hashlib
+import io
+import zipfile
 
 router = APIRouter(
     prefix="/documents",
@@ -16,19 +18,22 @@ router = APIRouter(
 
 @router.post("/upload", status_code=status.HTTP_200_OK)
 async def upload_document_known_author(db: Annotated[Session, Depends(get_db)], file: UploadFile, author_name: str):
+    title_cased_name = author_name.title()
     try:
-        new_author = Author(name=author_name.title())
-        db.add(new_author)
+        author = Author(name=title_cased_name)
+        db.add(author)
         db.commit()
     except IntegrityError:
-        return {"error": "Author already exists"}
+        db.rollback()
+        author = db.query(Author).filter(Author.name == title_cased_name).first()
 
     try:
-        doc = docx.Document(file.filename)
+        file_bytes = await file.read()
+        doc = docx.Document(io.BytesIO(file_bytes))
         doc_text = " ".join([para.text for para in doc.paragraphs])
         word_count = sum(len(para.text.split()) for para in doc.paragraphs)
         new_document = Document(
-            author_id=new_author.id,
+            author_id=author.id,
             filename=file.filename,
             text=doc_text,
             word_count=word_count,
@@ -37,8 +42,11 @@ async def upload_document_known_author(db: Annotated[Session, Depends(get_db)], 
 
         db.add(new_document)
         db.commit()
-    except PackageNotFoundError:
-        return {"error": "Trouble reading document"}
+    except (PackageNotFoundError, zipfile.BadZipFile):
+        return {"error": "Trouble reading document. Not .docx"}
+    except IntegrityError:
+        db.rollback()
+        return {"error": "Document already exists for this author"}
 
 
 
