@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, status
+from fastapi import APIRouter, UploadFile, Depends, HTTPException
 from app.extensions import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -16,8 +16,12 @@ router = APIRouter(
     tags=["Documents"]
 )
 
-@router.post("/upload", status_code=status.HTTP_200_OK)
-async def upload_document_known_author(db: Annotated[Session, Depends(get_db)], file: UploadFile, author_name: str):
+@router.post("/upload")
+async def upload_document_known_author(
+        db: Annotated[Session, Depends(get_db)],
+        file: UploadFile,
+        author_name: str
+):
     title_cased_name = author_name.title()
     try:
         author = Author(name=title_cased_name)
@@ -43,10 +47,10 @@ async def upload_document_known_author(db: Annotated[Session, Depends(get_db)], 
         db.add(new_document)
         db.commit()
     except (PackageNotFoundError, zipfile.BadZipFile):
-        return {"error": "Trouble reading document. Not .docx"}
+        raise HTTPException(status_code=422, detail="Trouble reading document. Not .docx")
     except IntegrityError:
         db.rollback()
-        return {"error": "Document already exists for this author"}
+        raise HTTPException(status_code=422, detail="Document already exists for this author")
 
 
 

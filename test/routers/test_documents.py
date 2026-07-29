@@ -127,8 +127,8 @@ def test_upload_duplicate_content_for_same_author_returns_error(make_docx_upload
     assert first_response.status_code == status.HTTP_200_OK
 
     second_response = _upload("Charles Dickens", second_filename, second_fileobj)
-    assert second_response.status_code == status.HTTP_200_OK
-    assert second_response.json() == {"error": "Document already exists for this author"}
+    assert second_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert second_response.json()["detail"] == "Document already exists for this author"
 
     author = _get_author_by_name("Charles Dickens")
     assert len(_get_documents_for_author(author.id)) == 1
@@ -146,8 +146,8 @@ def test_upload_duplicate_filename_for_same_author_returns_error(make_docx_uploa
     assert first_response.status_code == status.HTTP_200_OK
 
     second_response = _upload("Charlotte Bronte", second_filename, second_fileobj)
-    assert second_response.status_code == status.HTTP_200_OK
-    assert second_response.json() == {"error": "Document already exists for this author"}
+    assert second_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert second_response.json()["detail"] == "Document already exists for this author"
 
     author = _get_author_by_name("Charlotte Bronte")
     assert len(_get_documents_for_author(author.id)) == 1
@@ -161,8 +161,8 @@ def test_upload_invalid_file_type_returns_error():
         content_type="text/plain",
     )
 
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"error": "Trouble reading document. Not .docx"}
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Trouble reading document. Not .docx"
 
 
 def test_upload_invalid_file_type_still_creates_author_but_no_document():
@@ -181,8 +181,8 @@ def test_upload_invalid_file_type_still_creates_author_but_no_document():
 def test_upload_empty_file_returns_error():
     response = _upload("Empty Uploader", "empty.docx", io.BytesIO(b""))
 
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"error": "Trouble reading document. Not .docx"}
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Trouble reading document. Not .docx"
 
 
 def test_upload_corrupted_docx_returns_error():
@@ -192,8 +192,8 @@ def test_upload_corrupted_docx_returns_error():
         io.BytesIO(b"PK\x03\x04not a real docx package"),
     )
 
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"error": "Trouble reading document. Not .docx"}
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Trouble reading document. Not .docx"
 
 
 def test_upload_validates_content_not_just_extension(make_docx_upload):
