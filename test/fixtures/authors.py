@@ -1,7 +1,6 @@
 import pytest
 from app.models import Author
-from test.utils import TestingSessionLocal, engine
-from sqlalchemy import text
+from test.utils import TestingSessionLocal
 
 @pytest.fixture
 def test_author():
@@ -19,7 +18,3 @@ def test_author():
     db.commit()
 
     yield author
-
-    with engine.connect() as connection:
-        connection.execute(text("DELETE FROM authors;"))
-        connection.commit()
