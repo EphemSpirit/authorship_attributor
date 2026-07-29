@@ -6,7 +6,7 @@ from fastapi import status
 from app.extensions import get_db
 from app.models import Author, Document
 from test.fixtures.authors import test_author
-from test.fixtures.document import make_docx_upload
+from test.fixtures.document import make_docx_upload, test_document
 from test.utils import TestingSessionLocal, app, client, override_get_db
 
 app.dependency_overrides[get_db] = override_get_db
@@ -16,7 +16,7 @@ DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessin
 
 def _upload(author_name, filename, fileobj, content_type=DOCX_CONTENT_TYPE):
     return client.post(
-        "/documents/upload",
+        "/documents/upload-known",
         params={"author_name": author_name},
         files={"file": (filename, fileobj, content_type)},
     )
@@ -208,7 +208,7 @@ def test_upload_validates_content_not_just_extension(make_docx_upload):
 
 
 def test_upload_missing_file_returns_422():
-    response = client.post("/documents/upload", params={"author_name": "No File"})
+    response = client.post("/documents/upload-known", params={"author_name": "No File"})
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -217,8 +217,29 @@ def test_upload_missing_author_name_returns_422(make_docx_upload):
     filename, fileobj, _ = make_docx_upload()
 
     response = client.post(
-        "/documents/upload",
+        "/documents/upload-known",
         files={"file": (filename, fileobj, DOCX_CONTENT_TYPE)},
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+def test_get_document(test_document: Document):
+    response = client.get(f"/documents/{test_document.filename}")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["id"] == test_document.id
+    assert body["author_id"] == test_document.author_id
+    assert body["filename"] == test_document.filename
+    assert body["content_hash"] == test_document.content_hash
+    assert body["text"] == test_document.text
+    assert body["word_count"] == test_document.word_count
+    assert body["status"] == test_document.status
+
+
+def test_get_document_not_found():
+    response = client.get("/documents/does-not-exist.docx")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["detail"] == "Document not found."

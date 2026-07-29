@@ -25,7 +25,7 @@ class Document(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("authors.id"), index=True)
-    filename: Mapped[str] = mapped_column(String(255))
+    filename: Mapped[str] = mapped_column(String(255), index=True)
     content_hash: Mapped[str] = mapped_column(String(64))
     text: Mapped[str] = mapped_column(Text)
     word_count: Mapped[int] = mapped_column(Integer)

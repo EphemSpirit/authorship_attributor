@@ -1,10 +1,11 @@
-from fastapi import APIRouter, UploadFile, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, Depends, HTTPException, Path, status
 from app.extensions import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 from app.models.author import Author
 from app.models.document import Document
+from app.schemas.document_response import DocumentResponse
 import docx
 from docx.opc.exceptions import PackageNotFoundError
 import hashlib
@@ -16,7 +17,17 @@ router = APIRouter(
     tags=["Documents"]
 )
 
-@router.post("/upload")
+
+@router.get("/{document_name}", response_model=DocumentResponse, status_code=status.HTTP_200_OK)
+async def get_document(db: Annotated[Session, Depends(get_db)], document_name: str = Path(min_length=1)):
+    document = db.query(Document).filter(Document.filename == document_name).first()
+
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
+    return document
+
+@router.post("/upload-known")
 async def upload_document_known_author(
         db: Annotated[Session, Depends(get_db)],
         file: UploadFile,
