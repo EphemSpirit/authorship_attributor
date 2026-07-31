@@ -7,6 +7,12 @@ AUTHOR table meant to hold basic information about an Author.
 Not meant to hold any stylometric data.
 This will serve as a list of authors to check a document against,
 and the [DETERMINE TABLE] table will handle the actual document analysis.
+
+An author may be credited on multiple documents, and a document may credit
+multiple authors (e.g. co-authored scientific publications), so this is a
+many-to-many relationship via the document_authors association table.
+Deleting an author only removes their credit from shared documents, not the
+documents themselves.
 '''
 
 class Author(Base):
@@ -24,6 +30,6 @@ class Author(Base):
 
     documents = relationship(
         "Document",
-        back_populates="author",
-        cascade="all, delete-orphan",
+        secondary="document_authors",
+        back_populates="authors",
     )

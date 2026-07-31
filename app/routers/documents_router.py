@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, Depends, HTTPException, Path, status
+from fastapi import APIRouter, UploadFile, Depends, HTTPException, Path, Query, status
 from app.extensions import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -27,13 +27,9 @@ async def get_document(db: Annotated[Session, Depends(get_db)], document_name: s
 
     return document
 
-@router.post("/upload-known")
-async def upload_document_known_author(
-        db: Annotated[Session, Depends(get_db)],
-        file: UploadFile,
-        author_name: str
-):
-    title_cased_name = author_name.title()
+
+def _get_or_create_author(db: Session, name: str) -> Author:
+    title_cased_name = name.title()
     try:
         author = Author(name=title_cased_name)
         db.add(author)
@@ -41,27 +37,56 @@ async def upload_document_known_author(
     except IntegrityError:
         db.rollback()
         author = db.query(Author).filter(Author.name == title_cased_name).first()
+    return author
+
+
+@router.post("/upload-known", response_model=DocumentResponse)
+async def upload_document_known_author(
+        db: Annotated[Session, Depends(get_db)],
+        file: UploadFile,
+        author_names: Annotated[list[str], Query()]
+):
+    if not author_names:
+        raise HTTPException(status_code=422, detail="At least one author_name is required")
+
+    authors = [_get_or_create_author(db, name) for name in author_names]
 
     try:
         file_bytes = await file.read()
         doc = docx.Document(io.BytesIO(file_bytes))
         doc_text = " ".join([para.text for para in doc.paragraphs])
         word_count = sum(len(para.text.split()) for para in doc.paragraphs)
+        content_hash = hashlib.sha256(doc_text.encode("utf-8")).hexdigest()
+    except (PackageNotFoundError, zipfile.BadZipFile):
+        raise HTTPException(status_code=422, detail="Trouble reading document. Not .docx")
+
+    existing_document = db.query(Document).filter(Document.content_hash == content_hash).first()
+
+    if existing_document is not None:
+        new_authors = [author for author in authors if author not in existing_document.authors]
+        if not new_authors:
+            raise HTTPException(status_code=422, detail="Document already exists for these authors")
+        existing_document.authors.extend(new_authors)
+        db.commit()
+        db.refresh(existing_document)
+        return existing_document
+
+    try:
         new_document = Document(
-            author_id=author.id,
             filename=file.filename,
             text=doc_text,
             word_count=word_count,
-            content_hash=hashlib.sha256(doc_text.encode("utf-8")).hexdigest()
+            content_hash=content_hash,
+            authors=authors,
         )
 
         db.add(new_document)
         db.commit()
-    except (PackageNotFoundError, zipfile.BadZipFile):
-        raise HTTPException(status_code=422, detail="Trouble reading document. Not .docx")
+        db.refresh(new_document)
+        return new_document
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=422, detail="Document already exists for this author")
+        raise HTTPException(status_code=422, detail="Document already exists for these authors")
 
 
 

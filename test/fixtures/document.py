@@ -11,15 +11,16 @@ import hashlib
 def test_document(test_author: Author):
     example_text = "This is a sample document"
 
+    db = TestingSessionLocal()
+    author = db.get(Author, test_author.id)
     document = Document(
-        author_id=test_author.id,
+        authors=[author],
         filename="sample.docx",
         text=example_text,
         word_count=len(example_text.split()),
         content_hash=hashlib.sha256(example_text.encode("utf-8")).hexdigest()
     )
 
-    db = TestingSessionLocal()
     db.add(document)
     db.commit()
 
