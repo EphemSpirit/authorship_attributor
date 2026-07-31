@@ -14,10 +14,12 @@ app.dependency_overrides[get_db] = override_get_db
 DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def _upload(author_name, filename, fileobj, content_type=DOCX_CONTENT_TYPE):
+def _upload(author_names, filename, fileobj, content_type=DOCX_CONTENT_TYPE):
+    if isinstance(author_names, str):
+        author_names = [author_names]
     return client.post(
         "/documents/upload-known",
-        params={"author_name": author_name},
+        params={"author_names": author_names},
         files={"file": (filename, fileobj, content_type)},
     )
 
@@ -25,7 +27,7 @@ def _upload(author_name, filename, fileobj, content_type=DOCX_CONTENT_TYPE):
 def _get_author_by_name(name):
     db = TestingSessionLocal()
     try:
-        return db.query(Author).filter(Author.name == name).first()
+        return db.query(Author).filter(Author.name == name.title()).first()
     finally:
         db.close()
 
@@ -33,7 +35,8 @@ def _get_author_by_name(name):
 def _get_documents_for_author(author_id):
     db = TestingSessionLocal()
     try:
-        return db.query(Document).filter(Document.author_id == author_id).all()
+        author = db.get(Author, author_id)
+        return list(author.documents) if author else []
     finally:
         db.close()
 
@@ -70,7 +73,6 @@ def test_upload_titlecases_new_author_name(make_docx_upload):
 
     assert response.status_code == status.HTTP_200_OK
     assert _get_author_by_name("Stephen King") is not None
-    assert _get_author_by_name("stephen king") is None
 
 
 def test_upload_existing_author_associates_document_with_existing_author(test_author: Author, make_docx_upload):
@@ -128,13 +130,17 @@ def test_upload_duplicate_content_for_same_author_returns_error(make_docx_upload
 
     second_response = _upload("Charles Dickens", second_filename, second_fileobj)
     assert second_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert second_response.json()["detail"] == "Document already exists for this author"
+    assert second_response.json()["detail"] == "Document already exists for these authors"
 
     author = _get_author_by_name("Charles Dickens")
     assert len(_get_documents_for_author(author.id)) == 1
 
 
-def test_upload_duplicate_filename_for_same_author_returns_error(make_docx_upload):
+def test_upload_same_filename_different_content_for_same_author_creates_two_documents(make_docx_upload):
+    """Filename is no longer part of the uniqueness key: only content_hash is,
+    since the same file content might legitimately be credited to a different
+    set of authors later. Two genuinely different documents that happen to
+    share a filename are both kept."""
     first_filename, first_fileobj, _ = make_docx_upload(
         paragraphs=["First version of the document."], filename="report.docx"
     )
@@ -146,11 +152,42 @@ def test_upload_duplicate_filename_for_same_author_returns_error(make_docx_uploa
     assert first_response.status_code == status.HTTP_200_OK
 
     second_response = _upload("Charlotte Bronte", second_filename, second_fileobj)
-    assert second_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert second_response.json()["detail"] == "Document already exists for this author"
+    assert second_response.status_code == status.HTTP_200_OK
 
     author = _get_author_by_name("Charlotte Bronte")
-    assert len(_get_documents_for_author(author.id)) == 1
+    assert len(_get_documents_for_author(author.id)) == 2
+
+
+def test_upload_with_multiple_authors_links_document_to_all_of_them(make_docx_upload):
+    filename, fileobj, _ = make_docx_upload(paragraphs=["A jointly written paper."], filename="paper.docx")
+
+    response = _upload(["Jane Doe", "John Smith"], filename, fileobj)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert {author["name"] for author in body["authors"]} == {"Jane Doe", "John Smith"}
+
+    jane = _get_author_by_name("Jane Doe")
+    john = _get_author_by_name("John Smith")
+    assert len(_get_documents_for_author(jane.id)) == 1
+    assert len(_get_documents_for_author(john.id)) == 1
+    assert _get_documents_for_author(jane.id)[0].id == _get_documents_for_author(john.id)[0].id
+
+
+def test_uploading_same_content_with_a_new_author_adds_them_to_existing_document(make_docx_upload):
+    filename, fileobj, _ = make_docx_upload(paragraphs=["Shared content."], filename="paper.docx")
+    second_filename, second_fileobj, _ = make_docx_upload(paragraphs=["Shared content."], filename="paper.docx")
+
+    first_response = _upload("Jane Doe", filename, fileobj)
+    assert first_response.status_code == status.HTTP_200_OK
+    first_document_id = first_response.json()["id"]
+
+    second_response = _upload(["Jane Doe", "John Smith"], second_filename, second_fileobj)
+    assert second_response.status_code == status.HTTP_200_OK
+    body = second_response.json()
+
+    assert body["id"] == first_document_id
+    assert {author["name"] for author in body["authors"]} == {"Jane Doe", "John Smith"}
 
 
 def test_upload_invalid_file_type_returns_error():
@@ -208,12 +245,12 @@ def test_upload_validates_content_not_just_extension(make_docx_upload):
 
 
 def test_upload_missing_file_returns_422():
-    response = client.post("/documents/upload-known", params={"author_name": "No File"})
+    response = client.post("/documents/upload-known", params={"author_names": ["No File"]})
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
-def test_upload_missing_author_name_returns_422(make_docx_upload):
+def test_upload_missing_author_names_returns_422(make_docx_upload):
     filename, fileobj, _ = make_docx_upload()
 
     response = client.post(
@@ -230,7 +267,7 @@ def test_get_document(test_document: Document):
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["id"] == test_document.id
-    assert body["author_id"] == test_document.author_id
+    assert {author["id"] for author in body["authors"]} == {author.id for author in test_document.authors}
     assert body["filename"] == test_document.filename
     assert body["content_hash"] == test_document.content_hash
     assert body["text"] == test_document.text

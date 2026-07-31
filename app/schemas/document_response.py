@@ -2,10 +2,12 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.author_summary import AuthorSummary
+
 
 class DocumentResponse(BaseModel):
     id: int
-    author_id: int
+    authors: list[AuthorSummary]
     filename: str
     content_hash: str
     text: str
@@ -19,7 +21,7 @@ class DocumentResponse(BaseModel):
         "json_schema_extra": {
             "example": {
                 "id": 1,
-                "author_id": 1,
+                "authors": [{"id": 1, "name": "Stephen King"}],
                 "filename": "sample.docx",
                 "content_hash": "3f786850e387550fdab836ed7e6dc881de23001b",
                 "text": "This is a sample document",
