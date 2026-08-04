@@ -3,6 +3,7 @@ import io
 import docx
 import pytest
 from app.models import Document, Author
+from app.services.style_profile_service import StyleProfileService
 from test.utils import TestingSessionLocal
 from .authors import test_author
 import hashlib
@@ -18,7 +19,8 @@ def test_document(test_author: Author):
         filename="sample.docx",
         text=example_text,
         word_count=len(example_text.split()),
-        content_hash=hashlib.sha256(example_text.encode("utf-8")).hexdigest()
+        content_hash=hashlib.sha256(example_text.encode("utf-8")).hexdigest(),
+        **StyleProfileService().compute_document_stats(example_text),
     )
 
     db.add(document)
