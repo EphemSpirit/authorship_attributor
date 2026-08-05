@@ -2,9 +2,10 @@ import hashlib
 import io
 
 from fastapi import status
+from sqlalchemy.orm import joinedload
 
 from app.extensions import get_db
-from app.models import Author, Document
+from app.models import Author, AuthorStyleProfile, Document
 from test.fixtures.authors import test_author
 from test.fixtures.document import make_docx_upload, test_document
 from test.utils import TestingSessionLocal, app, client, override_get_db
@@ -41,6 +42,19 @@ def _get_documents_for_author(author_id):
         db.close()
 
 
+def _get_style_profiles_for_author(author_id):
+    db = TestingSessionLocal()
+    try:
+        return (
+            db.query(AuthorStyleProfile)
+            .options(joinedload(AuthorStyleProfile.features))
+            .filter(AuthorStyleProfile.author_id == author_id)
+            .all()
+        )
+    finally:
+        db.close()
+
+
 def test_upload_creates_author_and_document(make_docx_upload):
     paragraphs = ["Hello world, this is a sample document.", "It has two paragraphs."]
     filename, fileobj, content = make_docx_upload(paragraphs=paragraphs, filename="sample.docx")
@@ -64,6 +78,43 @@ def test_upload_creates_author_and_document(make_docx_upload):
     assert document.text == expected_text
     assert document.word_count == expected_word_count
     assert document.content_hash == expected_hash
+
+
+def test_upload_triggers_a_style_profile_rebuild_for_the_author(make_docx_upload):
+    filename, fileobj, _ = make_docx_upload(
+        paragraphs=["The quick brown fox jumps over the lazy dog."], filename="fox.docx"
+    )
+
+    response = _upload("Style Profile Author", filename, fileobj)
+
+    assert response.status_code == status.HTTP_200_OK
+
+    author = _get_author_by_name("Style Profile Author")
+    profiles = _get_style_profiles_for_author(author.id)
+
+    assert len(profiles) == 1
+    assert profiles[0].model_version == "v1"
+    assert profiles[0].num_documents_used == 1
+    assert {feature.feature_type for feature in profiles[0].features} == {
+        "function_word_freq", "avg_sentence_length", "vocabulary_richness",
+    }
+
+
+def test_uploading_a_second_document_increments_the_authors_model_version(make_docx_upload):
+    first_filename, first_fileobj, _ = make_docx_upload(
+        paragraphs=["First document content."], filename="first.docx"
+    )
+    second_filename, second_fileobj, _ = make_docx_upload(
+        paragraphs=["Second document, different content."], filename="second.docx"
+    )
+
+    _upload("Revision Author", first_filename, first_fileobj)
+    _upload("Revision Author", second_filename, second_fileobj)
+
+    author = _get_author_by_name("Revision Author")
+    profiles = _get_style_profiles_for_author(author.id)
+
+    assert sorted(profile.model_version for profile in profiles) == ["v1", "v2"]
 
 
 def test_upload_titlecases_new_author_name(make_docx_upload):
