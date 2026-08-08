@@ -3,16 +3,12 @@ from app.extensions import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Annotated
-from app.models.author import Author
 from app.models.document import Document
 from app.schemas.document_response import DocumentResponse
 from app.services.style_profile_service import StyleProfileService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
-import docx
-from docx.opc.exceptions import PackageNotFoundError
-import hashlib
-import io
-import zipfile
+from app.utils.author_utils import get_or_create_author
+from app.utils.document_utils import add_new_authors_to_document, find_document_by_content_hash, parse_docx_upload
 
 router = APIRouter(
     prefix="/documents",
@@ -30,18 +26,6 @@ async def get_document(db: Annotated[Session, Depends(get_db)], document_name: s
     return document
 
 
-def _get_or_create_author(db: Session, name: str) -> Author:
-    title_cased_name = name.title()
-    try:
-        author = Author(name=title_cased_name)
-        db.add(author)
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        author = db.query(Author).filter(Author.name == title_cased_name).first()
-    return author
-
-
 @router.post("/upload-known", response_model=DocumentResponse)
 async def upload_document_known_author(
         db: Annotated[Session, Depends(get_db)],
@@ -52,26 +36,14 @@ async def upload_document_known_author(
     if not author_names:
         raise HTTPException(status_code=422, detail="At least one author_name is required")
 
-    authors = [_get_or_create_author(db, name) for name in author_names]
+    authors = [get_or_create_author(db, name) for name in author_names]
 
-    try:
-        file_bytes = await file.read()
-        doc = docx.Document(io.BytesIO(file_bytes))
-        doc_text = " ".join([para.text for para in doc.paragraphs])
-        word_count = sum(len(para.text.split()) for para in doc.paragraphs)
-        content_hash = hashlib.sha256(doc_text.encode("utf-8")).hexdigest()
-    except (PackageNotFoundError, zipfile.BadZipFile):
-        raise HTTPException(status_code=422, detail="Trouble reading document. Not .docx")
+    doc_text, word_count, content_hash = await parse_docx_upload(file)
 
-    existing_document = db.query(Document).filter(Document.content_hash == content_hash).first()
+    existing_document = find_document_by_content_hash(db, content_hash)
 
     if existing_document is not None:
-        new_authors = [author for author in authors if author not in existing_document.authors]
-        if not new_authors:
-            raise HTTPException(status_code=422, detail="Document already exists for these authors")
-        existing_document.authors.extend(new_authors)
-        db.commit()
-        db.refresh(existing_document)
+        existing_document = add_new_authors_to_document(db, existing_document, authors)
         background_tasks.add_task(StyleProfileRebuildService().rebuild_all_in_background)
         return existing_document
 

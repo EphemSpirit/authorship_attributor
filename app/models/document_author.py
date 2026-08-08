@@ -1,11 +1,11 @@
-from app.extensions import Base
-from sqlalchemy import Table, Column, Integer, ForeignKey
-
 '''
 DOCUMENT_AUTHORS association table implementing the many-to-many relationship
 between documents and authors (e.g. co-authored scientific publications).
 Carries no data of its own beyond the two foreign keys.
 '''
+
+from app.extensions import Base
+from sqlalchemy import Table, Column, Integer, ForeignKey
 
 document_authors = Table(
     "document_authors",
