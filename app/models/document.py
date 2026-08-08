@@ -1,9 +1,3 @@
-from datetime import datetime
-
-from app.extensions import Base
-from sqlalchemy import Integer, String, Text, JSON, DateTime, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 '''
 DOCUMENT table holds one ingested writing sample per row. A document may be
 credited to multiple authors (e.g. co-authored scientific publications), so
@@ -20,6 +14,13 @@ profiles get rebuilt from the whole corpus on every upload, so these let
 that rebuild aggregate cached per-document counts instead of re-tokenizing
 every document's raw text on every rebuild.
 '''
+
+from datetime import datetime
+
+from app.extensions import Base
+from sqlalchemy import Integer, String, Text, JSON, DateTime, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 
 class Document(Base):
     __tablename__ = "documents"

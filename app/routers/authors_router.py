@@ -3,8 +3,9 @@ from app.extensions import get_db
 from typing import Annotated
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
-from app.models import *
+from app.models import Author, AuthorStyleProfile
 from app.schemas.author_request import AuthorRequest
+from app.schemas.author_response import AuthorResponse
 from app.schemas.author_style_profile_response import AuthorStyleProfileResponse
 
 router = APIRouter(
@@ -13,7 +14,7 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=list[AuthorRequest], status_code=status.HTTP_200_OK)
+@router.get("", response_model=list[AuthorResponse], status_code=status.HTTP_200_OK)
 def get_authors(db: Annotated[Session, Depends(get_db)]):
     return db.query(Author).all()
 
@@ -22,16 +23,20 @@ Main way to create an author is via document upload. This route exists for
 if you want to register an author in the database, but don't yet have any documents to feed
 the documents_router/upload endpoint
 """
-@router.post("", response_model=AuthorRequest, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AuthorResponse, status_code=status.HTTP_201_CREATED)
 def create_author(author_request: AuthorRequest, db: Annotated[Session, Depends(get_db)]):
-    author = Author(name=author_request.name, author_metadata=author_request.author_metadata)
-    db.add(author)
-    db.commit()
-    db.refresh(author)
-    return author
+    try:
+        author = Author(name=author_request.name, author_metadata=author_request.author_metadata)
+        db.add(author)
+        db.commit()
+        db.refresh(author)
+        return author
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Author with that name already exists.")
 
 
-@router.get("/{author_id}", response_model=AuthorRequest, status_code=status.HTTP_200_OK)
+@router.get("/{author_id}", response_model=AuthorResponse, status_code=status.HTTP_200_OK)
 def get_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depends(get_db)]):
     author = (
         db.query(Author)
@@ -44,7 +49,7 @@ def get_author(author_id: Annotated[int, Path()], db: Annotated[Session, Depends
     return author
 
 
-@router.put("/{author_id}", response_model=AuthorRequest, status_code=status.HTTP_200_OK)
+@router.put("/{author_id}", response_model=AuthorResponse, status_code=status.HTTP_200_OK)
 def update_author(
         author_request: AuthorRequest,
         db: Annotated[Session, Depends(get_db)],

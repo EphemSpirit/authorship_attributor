@@ -1,15 +1,3 @@
-from collections import Counter
-
-from nltk.tokenize import sent_tokenize, word_tokenize
-
-from app.models.author import Author
-from app.models.author_style_feature import AuthorStyleFeature
-from app.models.author_style_profile import AuthorStyleProfile
-from app.models.document import Document
-
-DEFAULT_MODEL_VERSION = "v1"
-DEFAULT_NUM_FUNCTION_WORDS = 100
-
 '''
 StyleProfileService turns an author's raw document text into the feature
 vectors AUTHOR_STYLE_PROFILE / AUTHOR_STYLE_FEATURE are built from, following
@@ -42,6 +30,18 @@ This service only computes AuthorStyleProfile/AuthorStyleFeature objects; it
 does not add or commit them, so callers decide persistence.
 '''
 
+from collections import Counter
+
+from nltk.tokenize import sent_tokenize, word_tokenize
+
+from app.models.author import Author
+from app.models.author_style_feature import AuthorStyleFeature
+from app.models.author_style_profile import AuthorStyleProfile
+from app.models.document import Document
+
+DEFAULT_MODEL_VERSION = "v1"
+DEFAULT_NUM_FUNCTION_WORDS = 100
+
 
 class StyleProfileService:
     def compute_document_stats(self, text: str) -> dict:
@@ -56,6 +56,7 @@ class StyleProfileService:
             "total_sentence_word_count": sum(sentence_lengths),
         }
 
+    @staticmethod
     def determine_function_words(
         self,
         corpus_documents: list[Document],
@@ -95,9 +96,12 @@ class StyleProfileService:
             features=features,
         )
 
+    @staticmethod
     def _tokenize_words(self, text: str) -> list[str]:
         return [token.lower() for token in word_tokenize(text) if token.isalpha()]
 
+
+    @staticmethod
     def _function_word_freq_feature(
         self, token_counts: Counter, function_words: list[str]
     ) -> AuthorStyleFeature:
@@ -110,6 +114,7 @@ class StyleProfileService:
             feature_names=function_words,
         )
 
+    @staticmethod
     def _avg_sentence_length_feature(
         self, sentence_count: int, total_sentence_word_count: int
     ) -> AuthorStyleFeature:
@@ -121,6 +126,7 @@ class StyleProfileService:
             feature_names=["avg_sentence_length"],
         )
 
+    @staticmethod
     def _vocabulary_richness_feature(self, token_counts: Counter) -> AuthorStyleFeature:
         total_tokens = sum(token_counts.values())
         richness = len(token_counts) / total_tokens if total_tokens else 0.0

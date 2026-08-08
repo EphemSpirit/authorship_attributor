@@ -1,7 +1,3 @@
-from app.extensions import Base
-from sqlalchemy import String, JSON, Integer, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 '''
 AUTHOR table meant to hold basic information about an Author.
 Not meant to hold any stylometric data.
@@ -14,6 +10,11 @@ many-to-many relationship via the document_authors association table.
 Deleting an author only removes their credit from shared documents, not the
 documents themselves.
 '''
+
+from app.extensions import Base
+from sqlalchemy import String, JSON, Integer, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 
 class Author(Base):
     __tablename__ = "authors"
@@ -32,4 +33,8 @@ class Author(Base):
         "Document",
         secondary="document_authors",
         back_populates="authors",
+    )
+    style_profiles = relationship(
+        "AuthorStyleProfile",
+        back_populates="author",
     )

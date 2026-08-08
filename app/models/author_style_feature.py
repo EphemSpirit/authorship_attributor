@@ -1,12 +1,13 @@
-from app.extensions import Base
-from sqlalchemy import Integer, String, JSON, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 '''
 AUTHOR_STYLE_FEATURE table holds a single feature family's vector (e.g.
 "function_word_freq", "avg_sentence_length") for a parent AUTHOR_STYLE_PROFILE.
 A profile has one row here per feature_type it was computed with.
 '''
+
+from app.extensions import Base
+from sqlalchemy import Integer, String, JSON, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 
 class AuthorStyleFeature(Base):
     __tablename__ = "author_style_features"

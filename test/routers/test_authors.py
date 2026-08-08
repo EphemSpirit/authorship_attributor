@@ -1,11 +1,9 @@
 from fastapi import status
 from app.extensions import get_db
 from app.models import Author, AuthorStyleProfile
-from test.utils import *
+from test.utils import app, client, override_get_db
 from test.fixtures.authors import test_author
 from test.fixtures.author_style_profile import test_author_style_profile
-from sqlalchemy.exc import IntegrityError
-import pytest
 
 app.dependency_overrides[get_db] = override_get_db
 
@@ -49,8 +47,10 @@ def test_create_author_duplicate(test_author: Author):
         "author_metadata": {"bio": "He was a man", "age": 65}
     }
 
-    with pytest.raises(IntegrityError):
-        client.post("/authors", json=payload)
+    response = client.post("/authors", json=payload)
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Author with that name already exists."
 
 
 def test_get_author(test_author: Author):
