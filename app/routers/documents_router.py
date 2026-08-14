@@ -4,7 +4,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 from app.models.document import Document
+from app.schemas.author_summary import AuthorSummary
+from app.schemas.disputed_document_response import DisputedDocumentResponse
 from app.schemas.document_response import DocumentResponse
+from app.services.author_attribution_service import AuthorAttributionService
 from app.services.style_profile_service import StyleProfileService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
 from app.utils.author_utils import get_or_create_author
@@ -69,4 +72,19 @@ async def upload_document_known_author(
         raise HTTPException(status_code=422, detail="Document already exists for these authors")
 
 
+@router.post("/upload-disputed", response_model=DisputedDocumentResponse)
+async def upload_disputed(
+        db: Annotated[Session, Depends(get_db)],
+        document: UploadFile,
+):
+    doc_text, _word_count, _content_hash = await parse_docx_upload(document)
 
+    try:
+        predicted_author, confidence_score = AuthorAttributionService().attribute(db, doc_text)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return DisputedDocumentResponse(
+        predicted_author=AuthorSummary.model_validate(predicted_author),
+        confidence_score=confidence_score,
+    )

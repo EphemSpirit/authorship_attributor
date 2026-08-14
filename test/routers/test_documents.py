@@ -25,6 +25,13 @@ def _upload(author_names, filename, fileobj, content_type=DOCX_CONTENT_TYPE):
     )
 
 
+def _upload_disputed(filename, fileobj, content_type=DOCX_CONTENT_TYPE):
+    return client.post(
+        "/documents/upload-disputed",
+        files={"document": (filename, fileobj, content_type)},
+    )
+
+
 def _get_author_by_name(name):
     db = TestingSessionLocal()
     try:
@@ -331,3 +338,45 @@ def test_get_document_not_found():
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == "Document not found."
+
+
+def test_upload_disputed_returns_the_closer_matching_author(make_docx_upload):
+    terse_filename, terse_fileobj, _ = make_docx_upload(
+        paragraphs=["I go. I see. I win."], filename="terse.docx"
+    )
+    verbose_filename, verbose_fileobj, _ = make_docx_upload(
+        paragraphs=["Subsequently, following considerable deliberation, one might reasonably "
+                    "conclude that the outcome was, in fact, favorable."],
+        filename="verbose.docx",
+    )
+    _upload("Terse Author", terse_filename, terse_fileobj)
+    _upload("Verbose Author", verbose_filename, verbose_fileobj)
+
+    disputed_filename, disputed_fileobj, _ = make_docx_upload(
+        paragraphs=["I run. I jump. I win."], filename="disputed.docx"
+    )
+    response = _upload_disputed(disputed_filename, disputed_fileobj)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["predicted_author"]["name"] == "Terse Author"
+    assert 0 < body["confidence_score"] <= 1
+
+
+def test_upload_disputed_requires_at_least_two_author_profiles(make_docx_upload):
+    filename, fileobj, _ = make_docx_upload(paragraphs=["Solo author's only document."], filename="solo.docx")
+    _upload("Solo Author", filename, fileobj)
+
+    disputed_filename, disputed_fileobj, _ = make_docx_upload(
+        paragraphs=["Some disputed text."], filename="disputed.docx"
+    )
+    response = _upload_disputed(disputed_filename, disputed_fileobj)
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+def test_upload_disputed_invalid_file_type_returns_error():
+    response = _upload_disputed("notes.txt", io.BytesIO(b"This is plain text, not a docx file."), content_type="text/plain")
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Trouble reading document. Not .docx"

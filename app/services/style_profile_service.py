@@ -58,7 +58,6 @@ class StyleProfileService:
 
     @staticmethod
     def determine_function_words(
-        self,
         corpus_documents: list[Document],
         num_words: int = DEFAULT_NUM_FUNCTION_WORDS,
     ) -> list[str]:
@@ -83,11 +82,9 @@ class StyleProfileService:
             sentence_count += document.sentence_count
             total_sentence_word_count += document.total_sentence_word_count
 
-        features = [
-            self._function_word_freq_feature(token_counts, function_words),
-            self._avg_sentence_length_feature(sentence_count, total_sentence_word_count),
-            self._vocabulary_richness_feature(token_counts),
-        ]
+        features = self.build_features(
+            token_counts, sentence_count, total_sentence_word_count, function_words
+        )
 
         return AuthorStyleProfile(
             author_id=author.id,
@@ -96,14 +93,27 @@ class StyleProfileService:
             features=features,
         )
 
+    def build_features(
+        self,
+        token_counts: Counter,
+        sentence_count: int,
+        total_sentence_word_count: int,
+        function_words: list[str],
+    ) -> list[AuthorStyleFeature]:
+        return [
+            self._function_word_freq_feature(token_counts, function_words),
+            self._avg_sentence_length_feature(sentence_count, total_sentence_word_count),
+            self._vocabulary_richness_feature(token_counts),
+        ]
+
     @staticmethod
-    def _tokenize_words(self, text: str) -> list[str]:
+    def _tokenize_words(text: str) -> list[str]:
         return [token.lower() for token in word_tokenize(text) if token.isalpha()]
 
 
     @staticmethod
     def _function_word_freq_feature(
-        self, token_counts: Counter, function_words: list[str]
+        token_counts: Counter, function_words: list[str]
     ) -> AuthorStyleFeature:
         total_tokens = sum(token_counts.values()) or 1
         profile_vector = [token_counts[word] / total_tokens for word in function_words]
@@ -116,7 +126,7 @@ class StyleProfileService:
 
     @staticmethod
     def _avg_sentence_length_feature(
-        self, sentence_count: int, total_sentence_word_count: int
+        sentence_count: int, total_sentence_word_count: int
     ) -> AuthorStyleFeature:
         avg_length = total_sentence_word_count / sentence_count if sentence_count else 0.0
 
@@ -127,7 +137,7 @@ class StyleProfileService:
         )
 
     @staticmethod
-    def _vocabulary_richness_feature(self, token_counts: Counter) -> AuthorStyleFeature:
+    def _vocabulary_richness_feature(token_counts: Counter) -> AuthorStyleFeature:
         total_tokens = sum(token_counts.values())
         richness = len(token_counts) / total_tokens if total_tokens else 0.0
 
