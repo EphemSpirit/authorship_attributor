@@ -21,8 +21,8 @@ from app.services.style_profile_service import StyleProfileService
 
 
 class StyleProfileRebuildService:
-    def __init__(self, style_profile_service: StyleProfileService | None = None):
-        self._style_profile_service = style_profile_service or StyleProfileService()
+    def __init__(self, style_profile_service: StyleProfileService):
+        self._style_profile_service = style_profile_service
 
     def rebuild_all_in_background(self) -> None:
         # Opens its own session rather than reusing the request's: this runs

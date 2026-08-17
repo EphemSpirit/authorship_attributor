@@ -37,8 +37,8 @@ FeatureKey = tuple[str, str]
 
 
 class AuthorAttributionService:
-    def __init__(self, document_analysis_service: DocumentAnalysisService | None = None):
-        self._document_analysis_service = document_analysis_service or DocumentAnalysisService()
+    def __init__(self, document_analysis_service: DocumentAnalysisService):
+        self._document_analysis_service = document_analysis_service
 
     def attribute(self, db: Session, document_text: str) -> tuple[Author, float]:
         profiles = self._latest_profiles(db)
@@ -85,14 +85,13 @@ class AuthorAttributionService:
             for name in feature.feature_names
         ]
 
-    @staticmethod
-    def _shared_feature_keys(profiles: list[AuthorStyleProfile]) -> list[FeatureKey]:
+    def _shared_feature_keys(self, profiles: list[AuthorStyleProfile]) -> list[FeatureKey]:
         # Every profile is expected to come from the same
         # StyleProfileRebuildService.rebuild_all pass and therefore share one
         # feature schema (see class docstring). Verify that rather than
         # silently comparing authors on mismatched dimensions.
         keys_by_author_id = {
-            profile.author_id: AuthorAttributionService._feature_keys(profile.features)
+            profile.author_id: self._feature_keys(profile.features)
             for profile in profiles
         }
 

@@ -15,8 +15,8 @@ from app.services.style_profile_service import StyleProfileService
 
 
 class DocumentAnalysisService:
-    def __init__(self, style_profile_service: StyleProfileService | None = None):
-        self._style_profile_service = style_profile_service or StyleProfileService()
+    def __init__(self, style_profile_service: StyleProfileService):
+        self._style_profile_service = style_profile_service
 
     def analyze(self, text: str, function_words: list[str]) -> list[AuthorStyleFeature]:
         stats = self._style_profile_service.compute_document_stats(text)
