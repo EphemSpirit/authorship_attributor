@@ -21,8 +21,8 @@ from app.services.style_profile_service import StyleProfileService
 
 
 class StyleProfileRebuildService:
-    def __init__(self, style_profile_service: StyleProfileService | None = None):
-        self._style_profile_service = style_profile_service or StyleProfileService()
+    def __init__(self, style_profile_service: StyleProfileService):
+        self._style_profile_service = style_profile_service
 
     def rebuild_all_in_background(self) -> None:
         # Opens its own session rather than reusing the request's: this runs
@@ -55,7 +55,7 @@ class StyleProfileRebuildService:
 
 
     @staticmethod
-    def _latest_model_versions(self, db: Session) -> dict[int, str]:
+    def _latest_model_versions(db: Session) -> dict[int, str]:
         # One query for every author's latest profile version, instead of
         # one query per author inside the rebuild_all loop.
         latest_profile_ids = (
@@ -74,7 +74,7 @@ class StyleProfileRebuildService:
 
 
     @staticmethod
-    def _next_model_version(self, latest_model_version: str | None) -> str:
+    def _next_model_version(latest_model_version: str | None) -> str:
         if latest_model_version is None:
             return "v1"
 

@@ -5,14 +5,11 @@ A stylometry-based authorship attribution backend. It builds a statistical
 credited to them, and exposes those fingerprints over a small FastAPI
 service.
 
-The long-term goal is classic **authorship attribution**: given a document
-of disputed or unknown authorship, compare its style against a set of
-candidate authors' fingerprints and report which one it most likely came
-from, with a confidence score. This repo currently implements the
-foundation that step depends on — ingesting known-author documents and
-building/versioning their style profiles. The comparison/scoring step
-itself (matching a *questioned* document against those profiles) is not
-implemented yet; see [Roadmap](#roadmap).
+It implements classic **authorship attribution**: given a document of
+disputed or unknown authorship, it extracts the same style features used
+for known authors, compares them against every candidate author's
+fingerprint, and reports which one it most likely came from, with a
+confidence score.
 
 ## How it works
 
@@ -50,6 +47,19 @@ implemented yet; see [Roadmap](#roadmap).
      baselines.
 4. **Read a profile.** `GET /authors/{id}/style-profile` returns an
    author's most recently computed profile and all of its features.
+5. **Attribute a disputed document.** A `.docx` file of unknown authorship
+   is uploaded via `POST /documents/upload-disputed`. It's analyzed the same
+   way known documents are (same tokenization, same function-word list,
+   same three feature families) but never persisted or folded into any
+   author's profile. Its feature vector is then compared against every
+   candidate author's latest profile per Burrows' Delta: each feature
+   dimension is z-scored against the distribution of that dimension across
+   the candidate authors, and the disputed document's z-scored vector is
+   compared to each author's by mean absolute distance (lower = closer
+   match). Distances are converted to a confidence score via softmax, so
+   scores sum to 1 across candidates and the closest match gets the
+   highest score. Requires at least two candidate authors with a style
+   profile to compare against.
 
 ## Data model
 
@@ -110,6 +120,29 @@ Response (`200 OK`):
 Fails with `422` if the file isn't a readable `.docx`, no `author_names`
 are supplied, or this exact content is already credited to every author
 named in the request.
+
+### `POST /documents/upload-disputed`
+
+Upload a `.docx` document of disputed/unknown authorship and get back the
+most likely author from those already registered, with a confidence score.
+Nothing is persisted — the document is analyzed and discarded.
+
+```bash
+curl -X POST "http://localhost:8000/documents/upload-disputed" \
+  -F "document=@questioned.docx"
+```
+
+Response (`200 OK`):
+
+```json
+{
+  "predicted_author": { "id": 1, "name": "Stephen King" },
+  "confidence_score": 0.87
+}
+```
+
+Fails with `422` if the file isn't a readable `.docx`, or fewer than two
+candidate authors have a style profile to compare against.
 
 ### `GET /documents/{document_name}`
 
@@ -233,14 +266,9 @@ session so upload tests don't leak into your real database.
 
 ## Roadmap
 
-The pieces in place today build and store per-author style fingerprints.
-Still to come:
-
-- **Attribution endpoint.** Accept a questioned document, extract its
-  feature vector the same way, and compare it against every candidate
-  author's profile — per Burrows' Delta, by z-scoring each feature against
-  the distribution across authors — to produce a ranked list of likely
-  authors with a confidence score.
+- **Ranked candidate list.** `upload-disputed` currently returns only the
+  single closest-matching author; returning the full ranked list of
+  candidates with their scores would give more visibility into close calls.
 - **Authentication.** `APP_SECRET_KEY` is present in `.env` but not yet
   read anywhere; the API currently has no auth.
 - A `requirements.txt`/`pyproject.toml` for reproducible installs.
