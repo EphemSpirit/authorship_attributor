@@ -264,6 +264,18 @@ Postgres database), with tables created fresh and rows cleaned up between
 tests. Background style-profile rebuilds are redirected to the same test
 session so upload tests don't leak into your real database.
 
+### Running tests on push
+
+A `.githooks/pre-push` hook mirrors the "Run Tests" CI job locally, so a
+failing suite is caught before it leaves your machine instead of at the PR.
+Opt in once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Skip it for a single push with `git push --no-verify`.
+
 ## Roadmap
 
 - **Ranked candidate list.** `upload-disputed` currently returns only the

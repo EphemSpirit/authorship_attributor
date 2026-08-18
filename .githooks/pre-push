@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Runs the test suite before allowing a push, mirroring the "Run Tests" CI
+# job (.github/workflows/tests.yml) so failures surface locally first.
+#
+# Enable with: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+PYTEST="$REPO_ROOT/.venv/bin/pytest"
+if [ ! -x "$PYTEST" ]; then
+    PYTEST="pytest"
+fi
+
+echo "Running test suite before push..."
+if ! "$PYTEST" -q; then
+    echo
+    echo "pre-push: tests failed, push aborted." >&2
+    echo "Fix the failures, or skip this hook with 'git push --no-verify'." >&2
+    exit 1
+fi
