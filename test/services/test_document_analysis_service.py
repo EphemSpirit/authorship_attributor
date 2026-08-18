@@ -7,7 +7,7 @@ from app.services.style_profile_service import StyleProfileService
 
 @pytest.fixture
 def service():
-    return DocumentAnalysisService()
+    return DocumentAnalysisService(StyleProfileService())
 
 
 class TestAnalyze:

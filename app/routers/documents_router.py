@@ -8,6 +8,7 @@ from app.schemas.author_summary import AuthorSummary
 from app.schemas.disputed_document_response import DisputedDocumentResponse
 from app.schemas.document_response import DocumentResponse
 from app.services.author_attribution_service import AuthorAttributionService
+from app.services.document_analysis_service import DocumentAnalysisService
 from app.services.style_profile_service import StyleProfileService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
 from app.utils.author_utils import get_or_create_author
@@ -47,7 +48,7 @@ async def upload_document_known_author(
 
     if existing_document is not None:
         existing_document = add_new_authors_to_document(db, existing_document, authors)
-        background_tasks.add_task(StyleProfileRebuildService().rebuild_all_in_background)
+        background_tasks.add_task(StyleProfileRebuildService(StyleProfileService()).rebuild_all_in_background)
         return existing_document
 
     document_stats = StyleProfileService().compute_document_stats(doc_text)
@@ -65,7 +66,7 @@ async def upload_document_known_author(
         db.add(new_document)
         db.commit()
         db.refresh(new_document)
-        background_tasks.add_task(StyleProfileRebuildService().rebuild_all_in_background)
+        background_tasks.add_task(StyleProfileRebuildService(StyleProfileService()).rebuild_all_in_background)
         return new_document
     except IntegrityError:
         db.rollback()
@@ -80,7 +81,8 @@ async def upload_disputed(
     doc_text, _word_count, _content_hash = await parse_docx_upload(document)
 
     try:
-        predicted_author, confidence_score = AuthorAttributionService().attribute(db, doc_text)
+        attribution_service = AuthorAttributionService(DocumentAnalysisService(StyleProfileService()))
+        predicted_author, confidence_score = attribution_service.attribute(db, doc_text)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

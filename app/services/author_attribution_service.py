@@ -47,9 +47,17 @@ class AuthorAttributionService:
 
         feature_keys = self._shared_feature_keys(profiles)
         function_words = next(
-            feature.feature_names for feature in profiles[0].features
-            if feature.feature_type == "function_word_freq"
+            (
+                feature.feature_names for feature in profiles[0].features
+                if feature.feature_type == "function_word_freq"
+            ),
+            None,
         )
+        if function_words is None:
+            raise ValueError(
+                f"Author profile for '{profiles[0].author.name}' is missing function word "
+                "frequency data; rebuild author profiles before attributing a disputed document"
+            )
 
         disputed_features = self._document_analysis_service.analyze(document_text, function_words)
         disputed_vector = self._vector(disputed_features, feature_keys)
@@ -95,7 +103,10 @@ class AuthorAttributionService:
             for profile in profiles
         }
 
-        expected_keys = next(iter(keys_by_author_id.values()))
+        expected_keys = next(iter(keys_by_author_id.values()), None)
+        if expected_keys is None:
+            raise ValueError("No author profiles available to attribute a disputed document")
+
         mismatched_author_ids = [
             author_id for author_id, keys in keys_by_author_id.items() if keys != expected_keys
         ]

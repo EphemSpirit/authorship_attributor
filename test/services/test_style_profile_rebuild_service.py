@@ -8,7 +8,7 @@ from test.utils import TestingSessionLocal
 
 @pytest.fixture
 def rebuild_service():
-    return StyleProfileRebuildService()
+    return StyleProfileRebuildService(StyleProfileService())
 
 
 @pytest.fixture

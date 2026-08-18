@@ -2,6 +2,7 @@ import pytest
 
 from app.models import Author, AuthorStyleFeature, AuthorStyleProfile, Document
 from app.services.author_attribution_service import AuthorAttributionService
+from app.services.document_analysis_service import DocumentAnalysisService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
 from app.services.style_profile_service import StyleProfileService
 from test.utils import TestingSessionLocal
@@ -15,7 +16,7 @@ VERBOSE_TEXT = (
 
 @pytest.fixture
 def service():
-    return AuthorAttributionService()
+    return AuthorAttributionService(DocumentAnalysisService(StyleProfileService()))
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ def _author_with_document(db, name: str, text: str) -> Author:
 class TestAttribute:
     def test_raises_with_fewer_than_two_author_profiles(self, service, db):
         _author_with_document(db, "Solo Author", TERSE_TEXT)
-        StyleProfileRebuildService().rebuild_all(db)
+        StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
 
         with pytest.raises(ValueError):
             service.attribute(db, "Some disputed text.")
@@ -49,7 +50,7 @@ class TestAttribute:
     def test_picks_the_author_with_the_closer_style(self, service, db):
         terse_author = _author_with_document(db, "Terse Author", TERSE_TEXT)
         _author_with_document(db, "Verbose Author", VERBOSE_TEXT)
-        StyleProfileRebuildService().rebuild_all(db)
+        StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
 
         predicted_author, confidence_score = service.attribute(db, "I run. I jump. I win.")
 
@@ -59,7 +60,7 @@ class TestAttribute:
     def test_confidence_score_favors_the_closer_match(self, service, db):
         terse_author = _author_with_document(db, "Terse Author", TERSE_TEXT)
         _ = _author_with_document(db, "Verbose Author", VERBOSE_TEXT)
-        StyleProfileRebuildService().rebuild_all(db)
+        StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
 
         predicted_author, confidence_score = service.attribute(db, TERSE_TEXT)
 
