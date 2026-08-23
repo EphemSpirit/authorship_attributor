@@ -12,7 +12,7 @@ from app.services.document_analysis_service import DocumentAnalysisService
 from app.services.style_profile_service import StyleProfileService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
 from app.utils.author_utils import get_or_create_author
-from app.utils.document_utils import add_new_authors_to_document, find_document_by_content_hash, parse_docx_upload
+from app.utils.document_utils import add_new_authors_to_document, find_document_by_content_hash, parse_document_upload
 
 router = APIRouter(
     prefix="/documents",
@@ -42,7 +42,7 @@ async def upload_document_known_author(
 
     authors = [get_or_create_author(db, name) for name in author_names]
 
-    doc_text, word_count, content_hash = await parse_docx_upload(file)
+    doc_text, word_count, content_hash = await parse_document_upload(file)
 
     existing_document = find_document_by_content_hash(db, content_hash)
 
@@ -78,7 +78,7 @@ async def upload_disputed(
         db: Annotated[Session, Depends(get_db)],
         document: UploadFile,
 ):
-    doc_text, _word_count, _content_hash = await parse_docx_upload(document)
+    doc_text, _word_count, _content_hash = await parse_document_upload(document)
 
     try:
         attribution_service = AuthorAttributionService(DocumentAnalysisService(StyleProfileService()))

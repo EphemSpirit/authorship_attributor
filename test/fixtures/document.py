@@ -46,3 +46,13 @@ def make_docx_upload():
         content = _build_docx_bytes(paragraphs)
         return filename, io.BytesIO(content), content
     return _make
+
+
+@pytest.fixture
+def make_txt_upload():
+    """Builds an in-memory .txt file usable as a multipart upload."""
+    def _make(text=None, filename="sample.txt"):
+        text = text if text is not None else "Hello world, this is a sample document."
+        content = text.encode("utf-8")
+        return filename, io.BytesIO(content), content
+    return _make

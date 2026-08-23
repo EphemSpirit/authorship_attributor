@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload
 from app.extensions import get_db
 from app.models import Author, AuthorStyleProfile, Document
 from test.fixtures.authors import test_author
-from test.fixtures.document import make_docx_upload, test_document
+from test.fixtures.document import make_docx_upload, make_txt_upload, test_document
 from test.utils import TestingSessionLocal, app, client, override_get_db
 
 app.dependency_overrides[get_db] = override_get_db
@@ -179,6 +179,25 @@ def test_upload_same_author_twice_creates_two_documents(make_docx_upload):
     assert {document.filename for document in documents} == {"first.docx", "second.docx"}
 
 
+def test_upload_same_author_with_docx_and_txt_associates_both_documents(make_docx_upload, make_txt_upload):
+    docx_filename, docx_fileobj, _ = make_docx_upload(
+        paragraphs=["First document content."], filename="first.docx"
+    )
+    txt_filename, txt_fileobj, _ = make_txt_upload(
+        text="Second document, different content.", filename="second.txt"
+    )
+
+    docx_response = _upload("Jane Austen", docx_filename, docx_fileobj)
+    txt_response = _upload("Jane Austen", txt_filename, txt_fileobj)
+
+    assert docx_response.status_code == status.HTTP_200_OK
+    assert txt_response.status_code == status.HTTP_200_OK
+
+    author = _get_author_by_name("Jane Austen")
+    documents = _get_documents_for_author(author.id)
+    assert {document.filename for document in documents} == {"first.docx", "second.txt"}
+
+
 def test_upload_duplicate_content_for_same_author_returns_error(make_docx_upload):
     first_filename, first_fileobj, _ = make_docx_upload(filename="first.docx")
     second_filename, second_fileobj, _ = make_docx_upload(filename="second.docx")
@@ -248,24 +267,24 @@ def test_uploading_same_content_with_a_new_author_adds_them_to_existing_document
     assert {author["name"] for author in body["authors"]} == {"Jane Doe", "John Smith"}
 
 
-def test_upload_invalid_file_type_returns_error():
+def test_upload_unsupported_file_type_returns_error():
     response = _upload(
         "Someone New",
-        "notes.txt",
-        io.BytesIO(b"This is plain text, not a docx file."),
-        content_type="text/plain",
+        "notes.pdf",
+        io.BytesIO(b"This is not a docx or txt file."),
+        content_type="application/pdf",
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert response.json()["detail"] == "Trouble reading document. Not .docx"
+    assert response.json()["detail"] == "Unsupported file type. Must be .docx or .txt"
 
 
-def test_upload_invalid_file_type_still_creates_author_but_no_document():
+def test_upload_unsupported_file_type_still_creates_author_but_no_document():
     _upload(
         "Someone New",
-        "notes.txt",
-        io.BytesIO(b"This is plain text, not a docx file."),
-        content_type="text/plain",
+        "notes.pdf",
+        io.BytesIO(b"This is not a docx or txt file."),
+        content_type="application/pdf",
     )
 
     author = _get_author_by_name("Someone New")
@@ -291,15 +310,29 @@ def test_upload_corrupted_docx_returns_error():
     assert response.json()["detail"] == "Trouble reading document. Not .docx"
 
 
-def test_upload_validates_content_not_just_extension(make_docx_upload):
-    """A real .docx uploaded with a misleading filename should still succeed."""
+def test_upload_extension_determines_parser_not_content(make_docx_upload):
+    """The file extension picks the parser, regardless of the actual bytes or Content-Type header.
+    A real .docx uploaded with a .txt filename is parsed as text and rejected as invalid UTF-8."""
     _, fileobj, _ = make_docx_upload(filename="whatever.txt")
 
     response = _upload("Extension Mismatch", "whatever.txt", fileobj, content_type="text/plain")
 
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Trouble reading document. Not valid .txt"
+
+
+def test_upload_txt_file_creates_document(make_txt_upload):
+    filename, fileobj, _ = make_txt_upload(text="Hello world, this is a sample document.", filename="sample.txt")
+
+    response = _upload("Txt Author", filename, fileobj, content_type="text/plain")
+
     assert response.status_code == status.HTTP_200_OK
-    author = _get_author_by_name("Extension Mismatch")
-    assert len(_get_documents_for_author(author.id)) == 1
+    author = _get_author_by_name("Txt Author")
+    documents = _get_documents_for_author(author.id)
+    assert len(documents) == 1
+    assert documents[0].filename == "sample.txt"
+    assert documents[0].text == "Hello world, this is a sample document."
+    assert documents[0].word_count == 7
 
 
 def test_upload_missing_file_returns_422():
@@ -375,8 +408,8 @@ def test_upload_disputed_requires_at_least_two_author_profiles(make_docx_upload)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
-def test_upload_disputed_invalid_file_type_returns_error():
-    response = _upload_disputed("notes.txt", io.BytesIO(b"This is plain text, not a docx file."), content_type="text/plain")
+def test_upload_disputed_unsupported_file_type_returns_error():
+    response = _upload_disputed("notes.pdf", io.BytesIO(b"This is not a docx or txt file."), content_type="application/pdf")
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert response.json()["detail"] == "Trouble reading document. Not .docx"
+    assert response.json()["detail"] == "Unsupported file type. Must be .docx or .txt"
