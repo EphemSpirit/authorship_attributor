@@ -281,6 +281,3 @@ Skip it for a single push with `git push --no-verify`.
 - **Ranked candidate list.** `upload-disputed` currently returns only the
   single closest-matching author; returning the full ranked list of
   candidates with their scores would give more visibility into close calls.
-- **Authentication.** `APP_SECRET_KEY` is present in `.env` but not yet
-  read anywhere; the API currently has no auth.
-- A `requirements.txt`/`pyproject.toml` for reproducible installs.
