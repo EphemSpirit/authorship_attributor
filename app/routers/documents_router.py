@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 from app.models.document import Document
 from app.schemas.author_summary import AuthorSummary
-from app.schemas.disputed_document_response import DisputedDocumentResponse
+from app.schemas.disputed_document_response import CandidateAuthorScore, DisputedDocumentResponse
 from app.schemas.document_response import DocumentResponse
 from app.services.author_attribution_service import AuthorAttributionService
 from app.services.document_analysis_service import DocumentAnalysisService
@@ -82,11 +82,16 @@ async def upload_disputed(
 
     try:
         attribution_service = AuthorAttributionService(DocumentAnalysisService(StyleProfileService()))
-        predicted_author, confidence_score = attribution_service.attribute(db, doc_text)
+        ranked_candidates = attribution_service.attribute(db, doc_text)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
     return DisputedDocumentResponse(
-        predicted_author=AuthorSummary.model_validate(predicted_author),
-        confidence_score=confidence_score,
+        candidates=[
+            CandidateAuthorScore(
+                author=AuthorSummary.model_validate(author),
+                confidence_score=confidence_score,
+            )
+            for author, confidence_score in ranked_candidates
+        ],
     )

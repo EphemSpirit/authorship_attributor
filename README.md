@@ -124,8 +124,8 @@ named in the request.
 ### `POST /documents/upload-disputed`
 
 Upload a `.docx` document of disputed/unknown authorship and get back the
-most likely author from those already registered, with a confidence score.
-Nothing is persisted — the document is analyzed and discarded.
+candidate authors already registered, ranked by confidence score (highest
+first). Nothing is persisted — the document is analyzed and discarded.
 
 ```bash
 curl -X POST "http://localhost:8000/documents/upload-disputed" \
@@ -136,10 +136,15 @@ Response (`200 OK`):
 
 ```json
 {
-  "predicted_author": { "id": 1, "name": "Stephen King" },
-  "confidence_score": 0.87
+  "candidates": [
+    { "author": { "id": 1, "name": "Stephen King" }, "confidence_score": 0.87 },
+    { "author": { "id": 2, "name": "Jane Austen" }, "confidence_score": 0.13 }
+  ]
 }
 ```
+
+Scores are computed across every candidate author and sum to 1, but only
+the top 5 are returned.
 
 Fails with `422` if the file isn't a readable `.docx`, or fewer than two
 candidate authors have a style profile to compare against.
@@ -275,9 +280,3 @@ git config core.hooksPath .githooks
 ```
 
 Skip it for a single push with `git push --no-verify`.
-
-## Roadmap
-
-- **Ranked candidate list.** `upload-disputed` currently returns only the
-  single closest-matching author; returning the full ranked list of
-  candidates with their scores would give more visibility into close calls.
