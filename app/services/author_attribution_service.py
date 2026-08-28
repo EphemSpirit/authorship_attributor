@@ -1,16 +1,16 @@
 '''
 AuthorAttributionService compares a disputed document's style against every
-candidate author's latest AuthorStyleProfile and returns the closest match
-with a confidence score, using an extension of Burrows' Delta: every feature
-dimension across all three feature families (function word frequencies, avg
-sentence length, vocabulary richness) is z-scored against the distribution
-of that dimension across the candidate authors, then the disputed document's
-z-scored vector is compared to each author's by mean absolute distance.
-Lower delta means a closer style match.
+candidate author's latest AuthorStyleProfile and returns the top-ranked
+matches with a confidence score each, using an extension of Burrows' Delta:
+every feature dimension across all three feature families (function word
+frequencies, avg sentence length, vocabulary richness) is z-scored against
+the distribution of that dimension across the candidate authors, then the
+disputed document's z-scored vector is compared to each author's by mean
+absolute distance. Lower delta means a closer style match.
 
 Deltas are converted to a confidence score via softmax over negative delta,
-so scores sum to 1 across candidates and the closest match gets the highest
-score.
+so scores sum to 1 across *all* candidates (not just the returned top N) and
+the closest match gets the highest score.
 
 Needs at least two author profiles to compare against - z-scoring a single
 profile against itself is meaningless, since every dimension would have
@@ -35,12 +35,14 @@ from app.services.document_analysis_service import DocumentAnalysisService
 
 FeatureKey = tuple[str, str]
 
+MAX_CANDIDATES = 5
+
 
 class AuthorAttributionService:
     def __init__(self, document_analysis_service: DocumentAnalysisService):
         self._document_analysis_service = document_analysis_service
 
-    def attribute(self, db: Session, document_text: str) -> tuple[Author, float]:
+    def attribute(self, db: Session, document_text: str) -> list[tuple[Author, float]]:
         profiles = self._latest_profiles(db)
         if len(profiles) < 2:
             raise ValueError("At least two author profiles are required to attribute a disputed document")
@@ -66,7 +68,7 @@ class AuthorAttributionService:
         }
 
         deltas = self._deltas(disputed_vector, author_vectors)
-        return self._best_match(deltas)
+        return self._ranked_matches(deltas)
 
     @staticmethod
     def _latest_profiles(db: Session) -> list[AuthorStyleProfile]:
@@ -150,11 +152,11 @@ class AuthorAttributionService:
         }
 
     @staticmethod
-    def _best_match(deltas: dict[Author, float]) -> tuple[Author, float]:
+    def _ranked_matches(deltas: dict[Author, float]) -> list[tuple[Author, float]]:
         min_delta = min(deltas.values())
         weights = {author: math.exp(-(delta - min_delta)) for author, delta in deltas.items()}
         total_weight = sum(weights.values())
         scores = {author: weight / total_weight for author, weight in weights.items()}
 
-        best_author = max(scores, key=scores.get)
-        return best_author, scores[best_author]
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        return ranked[:MAX_CANDIDATES]

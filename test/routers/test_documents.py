@@ -392,8 +392,12 @@ def test_upload_disputed_returns_the_closer_matching_author(make_docx_upload):
 
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert body["predicted_author"]["name"] == "Terse Author"
-    assert 0 < body["confidence_score"] <= 1
+    candidates = body["candidates"]
+    assert candidates[0]["author"]["name"] == "Terse Author"
+    assert 0 < candidates[0]["confidence_score"] <= 1
+    assert [c["confidence_score"] for c in candidates] == sorted(
+        (c["confidence_score"] for c in candidates), reverse=True
+    )
 
 
 def test_upload_disputed_requires_at_least_two_author_profiles(make_docx_upload):

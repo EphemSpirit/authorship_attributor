@@ -52,22 +52,45 @@ class TestAttribute:
         _author_with_document(db, "Verbose Author", VERBOSE_TEXT)
         StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
 
-        predicted_author, confidence_score = service.attribute(db, "I run. I jump. I win.")
+        ranked_candidates = service.attribute(db, "I run. I jump. I win.")
+        top_author, top_score = ranked_candidates[0]
 
-        assert predicted_author.id == terse_author.id
-        assert 0 < confidence_score <= 1
+        assert top_author.id == terse_author.id
+        assert 0 < top_score <= 1
 
     def test_confidence_score_favors_the_closer_match(self, service, db):
         terse_author = _author_with_document(db, "Terse Author", TERSE_TEXT)
         _ = _author_with_document(db, "Verbose Author", VERBOSE_TEXT)
         StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
 
-        predicted_author, confidence_score = service.attribute(db, TERSE_TEXT)
+        ranked_candidates = service.attribute(db, TERSE_TEXT)
+        top_author, top_score = ranked_candidates[0]
 
-        assert predicted_author.id == terse_author.id
+        assert top_author.id == terse_author.id
         # An exact style match against one candidate and a wildly different
         # second candidate should be lopsided, not a coin flip.
-        assert confidence_score > 0.5
+        assert top_score > 0.5
+
+    def test_ranks_all_candidates_in_descending_order_of_confidence(self, service, db):
+        terse_author = _author_with_document(db, "Terse Author", TERSE_TEXT)
+        verbose_author = _author_with_document(db, "Verbose Author", VERBOSE_TEXT)
+        StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
+
+        ranked_candidates = service.attribute(db, TERSE_TEXT)
+
+        assert [author.id for author, _ in ranked_candidates] == [terse_author.id, verbose_author.id]
+        scores = [score for _, score in ranked_candidates]
+        assert scores == sorted(scores, reverse=True)
+        assert sum(scores) == pytest.approx(1.0)
+
+    def test_caps_ranked_candidates_at_the_top_five(self, service, db):
+        for i in range(7):
+            _author_with_document(db, f"Author {i}", f"Author number {i} wrote this distinct sample text.")
+        StyleProfileRebuildService(StyleProfileService()).rebuild_all(db)
+
+        ranked_candidates = service.attribute(db, "Some disputed text to attribute.")
+
+        assert len(ranked_candidates) == 5
 
     def test_raises_when_profiles_have_inconsistent_feature_sets(self, service, db):
         # Bypasses StyleProfileRebuildService, which always keeps every
