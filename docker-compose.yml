@@ -22,6 +22,10 @@ services:
     environment:
       DATABASE_URL: postgresql://author_attribution:author_attribution@db:5432/author_attribution
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    # Mount the source so `fastapi dev` reloads on host edits.
+    # :z relabels the files for SELinux (Fedora) so the container can read them.
+    volumes:
+      - .:/app:z
     depends_on:
       db:
         condition: service_healthy
