@@ -214,24 +214,79 @@ Interactive Swagger docs are available at `/docs` once the app is running.
 
 ## Getting started
 
-### Prerequisites
+You can run the app either in Docker (no local Python or Postgres needed)
+or directly on your machine.
+
+### Option 1: Docker
+
+#### Prerequisites
+
+- Docker with the Compose plugin (`docker compose`)
+
+#### With Docker Compose (recommended)
+
+`docker-compose.yml` builds the API image from the `Dockerfile` and starts
+it alongside a PostgreSQL 17 database:
+
+```bash
+docker compose up --build
+```
+
+On startup the API container runs `alembic upgrade head` and then serves
+the app at `http://localhost:8000` (docs at `http://localhost:8000/docs`).
+The project directory is mounted into the container, so `fastapi dev`
+reloads when you edit code on the host. Postgres is published on host port
+`5433` in case you want to connect to it directly, and its data is kept in
+the `db_data` volume between runs.
+
+To allow a frontend on something other than `http://localhost:3000` through
+CORS, set `FRONTEND_URL` before starting:
+
+```bash
+FRONTEND_URL=http://localhost:5173 docker compose up --build
+```
+
+Stop the stack with `docker compose down`. Add `-v` to also delete the
+database volume.
+
+#### With the Dockerfile alone
+
+If you already have a PostgreSQL instance, you can build and run just the
+API image:
+
+```bash
+docker build -t author-attribution .
+
+docker run --rm -p 8000:8000 \
+  -e DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<db> \
+  -e FRONTEND_URL=http://localhost:3000 \
+  author-attribution
+```
+
+`<host>` must be reachable from inside the container. For a database
+running on your own machine, add `--add-host=host.docker.internal:host-gateway`
+and use `host.docker.internal` as the host.
+
+The image installs dependencies from `requirements.txt` and downloads the
+NLTK tokenizer data at build time, so you don't need to do either step
+yourself.
+
+### Option 2: Local install
+
+#### Prerequisites
 
 - Python 3.11+ (developed against 3.14)
 - A running PostgreSQL instance
 - `pip`
 
-### Install
+#### Install
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install "fastapi[standard]" "sqlalchemy>=2.0" alembic psycopg2-binary \
-            python-dotenv nltk python-docx pytest
+pip install -r requirements.txt
 ```
-
-> No `requirements.txt` is checked in yet — the command above installs the
-> versions this project was built against.
 
 Download the NLTK tokenizer data used by `word_tokenize`/`sent_tokenize`:
 
@@ -239,7 +294,7 @@ Download the NLTK tokenizer data used by `word_tokenize`/`sent_tokenize`:
 python -m nltk.downloader punkt punkt_tab
 ```
 
-### Set up the database
+#### Set up the database
 
 ```bash
 alembic upgrade head
@@ -249,7 +304,7 @@ alembic upgrade head
 be created even without running migrations first — but `alembic upgrade
 head` is the source of truth for schema history.)
 
-### Run
+#### Run
 
 ```bash
 fastapi dev

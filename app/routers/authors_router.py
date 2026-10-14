@@ -16,7 +16,7 @@ router = APIRouter(
 
 @router.get("", response_model=list[AuthorResponse], status_code=status.HTTP_200_OK)
 def get_authors(db: Annotated[Session, Depends(get_db)]):
-    return db.query(Author).all()
+    return db.query(Author).order_by(Author.id.desc()).all()
 
 """
 Main way to create an author is via document upload. This route exists for
