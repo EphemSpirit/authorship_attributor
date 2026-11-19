@@ -6,13 +6,18 @@ from app.models.document import Document
 from app.schemas.author_summary import AuthorSummary
 from app.schemas.disputed_document_response import CandidateAuthorScore, DisputedDocumentResponse
 from app.schemas.document_response import DocumentResponse
-from app.schemas.upload_known_response import FailedUpload, UploadKnownResponse
+from app.schemas.upload_known_response import FailedUpload, UploadKnownResponse, partial_upload_message
 from app.services.author_attribution_service import AuthorAttributionService
 from app.services.document_analysis_service import DocumentAnalysisService
 from app.services.style_profile_service import StyleProfileService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
 from app.utils.author_utils import get_or_create_author
-from app.utils.document_utils import parse_document_upload, store_known_document
+from app.utils.document_utils import (
+    DuplicateDocumentError,
+    InvalidDocumentError,
+    parse_document_upload,
+    store_known_document,
+)
 
 router = APIRouter(
     prefix="/documents",
@@ -48,12 +53,15 @@ async def upload_document_known_author(
 
     uploaded: list[Document] = []
     failed: list[FailedUpload] = []
+    has_invalid = has_duplicate = False
 
     for file in files:
         try:
             document: Document = await store_known_document(db, file, authors)
             uploaded.append(document)
         except HTTPException as e:
+            has_invalid |= isinstance(e, InvalidDocumentError)
+            has_duplicate |= isinstance(e, DuplicateDocumentError)
             failed.append(FailedUpload(filename=file.filename or "", detail=str(e.detail)))
 
     if uploaded:
@@ -65,6 +73,7 @@ async def upload_document_known_author(
     return UploadKnownResponse(
         uploaded=[DocumentResponse.model_validate(document) for document in uploaded],
         failed=failed,
+        message=partial_upload_message(has_invalid, has_duplicate) if uploaded and failed else None,
     )
 
 

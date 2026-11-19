@@ -8,6 +8,11 @@ from app.extensions import get_db
 from app.models import Author, AuthorStyleProfile, Document
 from test.fixtures.authors import test_author
 from test.fixtures.document import make_docx_upload, make_txt_upload, test_document
+from app.schemas.upload_known_response import (
+    DUPLICATE_MESSAGE,
+    INVALID_AND_DUPLICATE_MESSAGE,
+    INVALID_FORMAT_MESSAGE,
+)
 from test.utils import TestingSessionLocal, app, client, override_get_db
 
 app.dependency_overrides[get_db] = override_get_db
@@ -373,6 +378,7 @@ def test_upload_multiple_files_creates_a_document_for_each(make_docx_upload, mak
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["failed"] == []
+    assert body["message"] is None
     assert [document["filename"] for document in body["uploaded"]] == ["first.docx", "second.txt"]
 
     author = _get_author_by_name("Batch Author")
@@ -403,6 +409,7 @@ def test_upload_multiple_files_with_one_bad_file_stores_the_rest(make_docx_uploa
     assert body["failed"] == [
         {"filename": "notes.pdf", "detail": "Unsupported file type. Must be .docx or .txt"}
     ]
+    assert body["message"] == INVALID_FORMAT_MESSAGE
 
     author = _get_author_by_name("Partial Author")
     assert [document.filename for document in _get_documents_for_author(author.id)] == ["good.docx"]
@@ -421,6 +428,7 @@ def test_upload_multiple_files_all_bad_returns_422_with_every_failure():
         {"filename": "notes.pdf", "detail": "Unsupported file type. Must be .docx or .txt"},
         {"filename": "empty.docx", "detail": "Trouble reading document. Not .docx"},
     ]
+    assert body["message"] is None
 
 
 def test_upload_multiple_files_with_duplicate_content_in_same_batch_stores_it_once(make_docx_upload):
@@ -435,6 +443,21 @@ def test_upload_multiple_files_with_duplicate_content_in_same_batch_stores_it_on
     assert body["failed"] == [
         {"filename": "copy.docx", "detail": "Document already exists for these authors"}
     ]
+    assert body["message"] == DUPLICATE_MESSAGE
+
+
+def test_upload_multiple_files_with_invalid_and_duplicate_failures_mentions_both(make_docx_upload):
+    first = make_docx_upload(paragraphs=["Same content twice."], filename="first.docx")[:2]
+    copy = make_docx_upload(paragraphs=["Same content twice."], filename="copy.docx")[:2]
+    bad = ("notes.pdf", io.BytesIO(b"This is not a docx or txt file."), "application/pdf")
+
+    response = _upload_many("Mixed Failure Author", [(*first, DOCX_CONTENT_TYPE), (*copy, DOCX_CONTENT_TYPE), bad])
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert [document["filename"] for document in body["uploaded"]] == ["first.docx"]
+    assert {failure["filename"] for failure in body["failed"]} == {"copy.docx", "notes.pdf"}
+    assert body["message"] == INVALID_AND_DUPLICATE_MESSAGE
 
 
 def test_get_document(test_document: Document):

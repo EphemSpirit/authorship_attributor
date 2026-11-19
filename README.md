@@ -125,9 +125,15 @@ from being stored. The response lists what was stored and what failed, and why:
   ],
   "failed": [
     { "filename": "misery.pdf", "detail": "Unsupported file type. Must be .docx or .txt" }
-  ]
+  ],
+  "message": "Not all files were uploaded. Please make sure each document is a .txt or .docx format"
 }
 ```
+
+`message` is a user-facing summary set only on a partial success (some files
+stored, some failed); otherwise it's `null`. Its wording depends on why the
+files failed: unsupported/unreadable format, content already uploaded for
+these authors, or both.
 
 Returns `200` if at least one file was stored and `422` (same body shape) if
 every file failed. A file fails if it isn't a readable `.docx`/`.txt`, or its
