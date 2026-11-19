@@ -16,13 +16,25 @@ DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessin
 
 
 def _upload(author_names, filename, fileobj, content_type=DOCX_CONTENT_TYPE):
+    return _upload_many(author_names, [(filename, fileobj, content_type)])
+
+
+def _upload_many(author_names, uploads):
+    """uploads: list of (filename, fileobj, content_type) tuples, sent as repeated "files" fields."""
     if isinstance(author_names, str):
         author_names = [author_names]
     return client.post(
         "/documents/upload-known",
         params={"author_names": author_names},
-        files={"file": (filename, fileobj, content_type)},
+        files=[("files", upload) for upload in uploads],
     )
+
+
+def _single_failure_detail(response):
+    body = response.json()
+    assert body["uploaded"] == []
+    assert len(body["failed"]) == 1
+    return body["failed"][0]["detail"]
 
 
 def _upload_disputed(filename, fileobj, content_type=DOCX_CONTENT_TYPE):
@@ -207,7 +219,7 @@ def test_upload_duplicate_content_for_same_author_returns_error(make_docx_upload
 
     second_response = _upload("Charles Dickens", second_filename, second_fileobj)
     assert second_response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert second_response.json()["detail"] == "Document already exists for these authors"
+    assert _single_failure_detail(second_response) == "Document already exists for these authors"
 
     author = _get_author_by_name("Charles Dickens")
     assert len(_get_documents_for_author(author.id)) == 1
@@ -241,7 +253,7 @@ def test_upload_with_multiple_authors_links_document_to_all_of_them(make_docx_up
     response = _upload(["Jane Doe", "John Smith"], filename, fileobj)
 
     assert response.status_code == status.HTTP_200_OK
-    body = response.json()
+    body = response.json()["uploaded"][0]
     assert {author["name"] for author in body["authors"]} == {"Jane Doe", "John Smith"}
 
     jane = _get_author_by_name("Jane Doe")
@@ -257,11 +269,11 @@ def test_uploading_same_content_with_a_new_author_adds_them_to_existing_document
 
     first_response = _upload("Jane Doe", filename, fileobj)
     assert first_response.status_code == status.HTTP_200_OK
-    first_document_id = first_response.json()["id"]
+    first_document_id = first_response.json()["uploaded"][0]["id"]
 
     second_response = _upload(["Jane Doe", "John Smith"], second_filename, second_fileobj)
     assert second_response.status_code == status.HTTP_200_OK
-    body = second_response.json()
+    body = second_response.json()["uploaded"][0]
 
     assert body["id"] == first_document_id
     assert {author["name"] for author in body["authors"]} == {"Jane Doe", "John Smith"}
@@ -276,7 +288,7 @@ def test_upload_unsupported_file_type_returns_error():
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert response.json()["detail"] == "Unsupported file type. Must be .docx or .txt"
+    assert _single_failure_detail(response) == "Unsupported file type. Must be .docx or .txt"
 
 
 def test_upload_unsupported_file_type_still_creates_author_but_no_document():
@@ -296,7 +308,7 @@ def test_upload_empty_file_returns_error():
     response = _upload("Empty Uploader", "empty.docx", io.BytesIO(b""))
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert response.json()["detail"] == "Trouble reading document. Not .docx"
+    assert _single_failure_detail(response) == "Trouble reading document. Not .docx"
 
 
 def test_upload_corrupted_docx_returns_error():
@@ -307,7 +319,7 @@ def test_upload_corrupted_docx_returns_error():
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert response.json()["detail"] == "Trouble reading document. Not .docx"
+    assert _single_failure_detail(response) == "Trouble reading document. Not .docx"
 
 
 def test_upload_extension_determines_parser_not_content(make_docx_upload):
@@ -318,7 +330,7 @@ def test_upload_extension_determines_parser_not_content(make_docx_upload):
     response = _upload("Extension Mismatch", "whatever.txt", fileobj, content_type="text/plain")
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert response.json()["detail"] == "Trouble reading document. Not valid .txt"
+    assert _single_failure_detail(response) == "Trouble reading document. Not valid .txt"
 
 
 def test_upload_txt_file_creates_document(make_txt_upload):
@@ -346,10 +358,83 @@ def test_upload_missing_author_names_returns_422(make_docx_upload):
 
     response = client.post(
         "/documents/upload-known",
-        files={"file": (filename, fileobj, DOCX_CONTENT_TYPE)},
+        files={"files": (filename, fileobj, DOCX_CONTENT_TYPE)},
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+def test_upload_multiple_files_creates_a_document_for_each(make_docx_upload, make_txt_upload):
+    first = make_docx_upload(paragraphs=["First document content."], filename="first.docx")[:2]
+    second = make_txt_upload(text="Second document, different content.", filename="second.txt")[:2]
+
+    response = _upload_many("Batch Author", [(*first, DOCX_CONTENT_TYPE), (*second, "text/plain")])
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["failed"] == []
+    assert [document["filename"] for document in body["uploaded"]] == ["first.docx", "second.txt"]
+
+    author = _get_author_by_name("Batch Author")
+    assert {document.filename for document in _get_documents_for_author(author.id)} == {"first.docx", "second.txt"}
+
+
+def test_upload_multiple_files_rebuilds_style_profile_once(make_docx_upload):
+    first = make_docx_upload(paragraphs=["First document content."], filename="first.docx")[:2]
+    second = make_docx_upload(paragraphs=["Second document, different content."], filename="second.docx")[:2]
+
+    _upload_many("Single Rebuild Author", [(*first, DOCX_CONTENT_TYPE), (*second, DOCX_CONTENT_TYPE)])
+
+    author = _get_author_by_name("Single Rebuild Author")
+    profiles = _get_style_profiles_for_author(author.id)
+    assert len(profiles) == 1
+    assert profiles[0].num_documents_used == 2
+
+
+def test_upload_multiple_files_with_one_bad_file_stores_the_rest(make_docx_upload):
+    good = make_docx_upload(paragraphs=["A perfectly good document."], filename="good.docx")[:2]
+    bad = ("notes.pdf", io.BytesIO(b"This is not a docx or txt file."), "application/pdf")
+
+    response = _upload_many("Partial Author", [(*good, DOCX_CONTENT_TYPE), bad])
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert [document["filename"] for document in body["uploaded"]] == ["good.docx"]
+    assert body["failed"] == [
+        {"filename": "notes.pdf", "detail": "Unsupported file type. Must be .docx or .txt"}
+    ]
+
+    author = _get_author_by_name("Partial Author")
+    assert [document.filename for document in _get_documents_for_author(author.id)] == ["good.docx"]
+
+
+def test_upload_multiple_files_all_bad_returns_422_with_every_failure():
+    response = _upload_many("All Bad Author", [
+        ("notes.pdf", io.BytesIO(b"not supported"), "application/pdf"),
+        ("empty.docx", io.BytesIO(b""), DOCX_CONTENT_TYPE),
+    ])
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    body = response.json()
+    assert body["uploaded"] == []
+    assert body["failed"] == [
+        {"filename": "notes.pdf", "detail": "Unsupported file type. Must be .docx or .txt"},
+        {"filename": "empty.docx", "detail": "Trouble reading document. Not .docx"},
+    ]
+
+
+def test_upload_multiple_files_with_duplicate_content_in_same_batch_stores_it_once(make_docx_upload):
+    first = make_docx_upload(paragraphs=["Same content twice."], filename="first.docx")[:2]
+    second = make_docx_upload(paragraphs=["Same content twice."], filename="copy.docx")[:2]
+
+    response = _upload_many("Dupe Batch Author", [(*first, DOCX_CONTENT_TYPE), (*second, DOCX_CONTENT_TYPE)])
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert [document["filename"] for document in body["uploaded"]] == ["first.docx"]
+    assert body["failed"] == [
+        {"filename": "copy.docx", "detail": "Document already exists for these authors"}
+    ]
 
 
 def test_get_document(test_document: Document):

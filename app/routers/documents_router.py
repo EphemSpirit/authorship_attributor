@@ -1,18 +1,18 @@
-from fastapi import APIRouter, BackgroundTasks, UploadFile, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, BackgroundTasks, UploadFile, Depends, HTTPException, Path, Query, Response, status
 from app.extensions import get_db
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 from app.models.document import Document
 from app.schemas.author_summary import AuthorSummary
 from app.schemas.disputed_document_response import CandidateAuthorScore, DisputedDocumentResponse
 from app.schemas.document_response import DocumentResponse
+from app.schemas.upload_known_response import FailedUpload, UploadKnownResponse
 from app.services.author_attribution_service import AuthorAttributionService
 from app.services.document_analysis_service import DocumentAnalysisService
 from app.services.style_profile_service import StyleProfileService
 from app.services.style_profile_rebuild_service import StyleProfileRebuildService
 from app.utils.author_utils import get_or_create_author
-from app.utils.document_utils import add_new_authors_to_document, find_document_by_content_hash, parse_document_upload
+from app.utils.document_utils import parse_document_upload, store_known_document
 
 router = APIRouter(
     prefix="/documents",
@@ -30,47 +30,42 @@ async def get_document(db: Annotated[Session, Depends(get_db)], document_name: s
     return document
 
 
-@router.post("/upload-known", response_model=DocumentResponse)
+@router.post("/upload-known", response_model=UploadKnownResponse)
 async def upload_document_known_author(
         db: Annotated[Session, Depends(get_db)],
         background_tasks: BackgroundTasks,
-        file: UploadFile,
+        response: Response,
+        files: list[UploadFile],
         author_names: Annotated[list[str], Query()]
 ):
+    """Each file is processed and committed independently, so one bad file
+    doesn't sink the rest of the batch. Returns 200 if at least one file was
+    stored, 422 if every file failed; the body has the same shape either way."""
     if not author_names:
         raise HTTPException(status_code=422, detail="At least one author_name is required")
 
     authors = [get_or_create_author(db, name) for name in author_names]
 
-    doc_text, word_count, content_hash = await parse_document_upload(file)
+    uploaded: list[Document] = []
+    failed: list[FailedUpload] = []
 
-    existing_document = find_document_by_content_hash(db, content_hash)
+    for file in files:
+        try:
+            document: Document = await store_known_document(db, file, authors)
+            uploaded.append(document)
+        except HTTPException as e:
+            failed.append(FailedUpload(filename=file.filename or "", detail=str(e.detail)))
 
-    if existing_document is not None:
-        existing_document = add_new_authors_to_document(db, existing_document, authors)
+    if uploaded:
+        # One rebuild covers every document in the batch.
         background_tasks.add_task(StyleProfileRebuildService(StyleProfileService()).rebuild_all_in_background)
-        return existing_document
+    else:
+        response.status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    document_stats = StyleProfileService().compute_document_stats(doc_text)
-
-    try:
-        new_document = Document(
-            filename=file.filename,
-            text=doc_text,
-            word_count=word_count,
-            content_hash=content_hash,
-            authors=authors,
-            **document_stats,
-        )
-
-        db.add(new_document)
-        db.commit()
-        db.refresh(new_document)
-        background_tasks.add_task(StyleProfileRebuildService(StyleProfileService()).rebuild_all_in_background)
-        return new_document
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=422, detail="Document already exists for these authors")
+    return UploadKnownResponse(
+        uploaded=[DocumentResponse.model_validate(document) for document in uploaded],
+        failed=failed,
+    )
 
 
 @router.post("/upload-disputed", response_model=DisputedDocumentResponse)
