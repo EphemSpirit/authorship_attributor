@@ -88,38 +88,59 @@ Author ──< document_authors >── Document
 
 ### `POST /documents/upload-known`
 
-Upload a `.docx` document and credit it to one or more known authors. New
-author names are created automatically (title-cased) if they don't already
-exist.
+Upload one or more `.docx`/`.txt` documents and credit each of them to one or
+more known authors. New author names are created automatically (title-cased)
+if they don't already exist. Send each file as a separate `files` form field.
 
 ```bash
 curl -X POST "http://localhost:8000/documents/upload-known?author_names=Stephen%20King" \
-  -F "file=@manuscript.docx"
+  -F "files=@manuscript.docx"
+
+# Several documents at once:
+curl -X POST "http://localhost:8000/documents/upload-known?author_names=Stephen%20King" \
+  -F "files=@carrie.docx" -F "files=@misery.txt"
 
 # Co-authored document:
 curl -X POST "http://localhost:8000/documents/upload-known?author_names=Jane%20Doe&author_names=John%20Smith" \
-  -F "file=@paper.docx"
+  -F "files=@paper.docx"
 ```
 
-Response (`200 OK`):
+Each file is processed on its own, so one bad file doesn't stop the others
+from being stored. The response lists what was stored and what failed, and why:
 
 ```json
 {
-  "id": 1,
-  "authors": [{ "id": 1, "name": "Stephen King" }],
-  "filename": "manuscript.docx",
-  "content_hash": "3f786850e387550fdab836ed7e6dc881de23001b",
-  "text": "It was a dark and stormy night...",
-  "word_count": 5123,
-  "status": "pending",
-  "error_message": null,
-  "created_at": "2026-07-21T17:25:46.221560"
+  "uploaded": [
+    {
+      "id": 1,
+      "authors": [{ "id": 1, "name": "Stephen King" }],
+      "filename": "carrie.docx",
+      "content_hash": "3f786850e387550fdab836ed7e6dc881de23001b",
+      "text": "It was a dark and stormy night...",
+      "word_count": 5123,
+      "status": "pending",
+      "error_message": null,
+      "created_at": "2026-07-21T17:25:46.221560"
+    }
+  ],
+  "failed": [
+    { "filename": "misery.pdf", "detail": "Unsupported file type. Must be .docx or .txt" }
+  ],
+  "message": "Not all files were uploaded. Please make sure each document is a .txt or .docx format"
 }
 ```
 
-Fails with `422` if the file isn't a readable `.docx`, no `author_names`
-are supplied, or this exact content is already credited to every author
-named in the request.
+`message` is a user-facing summary set only on a partial success (some files
+stored, some failed); otherwise it's `null`. Its wording depends on why the
+files failed: unsupported/unreadable format, content already uploaded for
+these authors, or both.
+
+Returns `200` if at least one file was stored and `422` (same body shape) if
+every file failed. A file fails if it isn't a readable `.docx`/`.txt`, or its
+exact content is already credited to every author named in the request
+(including an earlier file in the same batch). The request as a whole fails
+with a standard `422` if no files or no `author_names` are supplied. Style
+profiles are rebuilt once per request, not once per file.
 
 ### `POST /documents/upload-disputed`
 
